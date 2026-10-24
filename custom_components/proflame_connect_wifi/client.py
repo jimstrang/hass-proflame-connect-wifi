@@ -1,5 +1,6 @@
 """Provides high level abstractions for interacting with Proflame fireplaces."""
 from homeassistant.components.climate import HVACAction, HVACMode, UnitOfTemperature
+from homeassistant.exceptions import ServiceValidationError
 
 from .client_base import ProflameClientBase
 from .const import (
@@ -166,6 +167,12 @@ class ProflameClient(ProflameClientBase):
 
     def set_flame_height(self, height: int) -> None:
         """Set the height of the flame in manual mode."""
+        self._check_writable()
+        if self.operating_mode == OperatingMode.SMART:
+            raise ServiceValidationError(
+                "Flame level is controlled automatically in Smart mode. "
+                "Select Manual or Thermostat mode before adjusting it."
+            )
         constrained = constrain(height, MIN_FLAME_HEIGHT, MAX_FLAME_HEIGHT)
         self.set_state(ApiAttrs.FLAME_HEIGHT, constrained)
         if constrained > 0 and self.operating_mode not in ADJUSTABLE_MODES:
@@ -189,11 +196,14 @@ class ProflameClient(ProflameClientBase):
         self._check_writable()
         if preset == Preset.OFF:
             if self.operating_mode != OperatingMode.OFF:
-                self.set_flame_height(0)
+                self.set_state(ApiAttrs.FLAME_HEIGHT, 0)
                 self.set_operating_mode(OperatingMode.MANUAL)
         if preset == Preset.MANUAL:
             if self.flame_height == 0:
-                self.set_flame_height(self._stored_flame)
+                if self.operating_mode == OperatingMode.SMART:
+                    self.set_state(ApiAttrs.FLAME_HEIGHT, self._stored_flame)
+                else:
+                    self.set_flame_height(self._stored_flame)
             self.set_operating_mode(OperatingMode.MANUAL)
         if preset == Preset.THERMOSTAT:
             self.set_operating_mode(OperatingMode.THERMOSTAT)

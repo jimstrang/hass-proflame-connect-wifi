@@ -166,6 +166,18 @@ flame-height control when deliberately requesting heat. Mode-only On can still
 ignite a burner depending on retained device settings; it is not a safe-state
 guarantee. Neither entity confirms physical combustion.
 
+**Smart mode controls flame output automatically.** Direct flame-slider
+adjustments, including zero, are rejected with a clear error while Smart is
+reported, without sending a flame command or silently selecting a different
+mode. Explicitly select Manual or Thermostat before adjusting the configured
+level. Deliberate climate Off, Device power Off, and preset changes remain
+available; their RF overwrite limitations still apply.
+
+The flame-level value is a configured setting, not live flame-height telemetry.
+In attended use, Smart raised the physical flame while the reported configured
+level remained unchanged. Do not infer actual flame output or combustion from
+the slider.
+
 This corrects the earlier power-switch display, which treated the Off climate
 preset as device-Off and could appear to revert after a mode-only On command.
 Existing entity IDs and unique IDs are unchanged; the default label is now
