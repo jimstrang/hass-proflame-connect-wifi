@@ -11,14 +11,10 @@
       },
       "user": {
         "description": "Enter the details of your fireplace. Read-only mode blocks all setting writes. If disabled, RF-initiated operation can override Wi-Fi commands, including Off. Do not rely on unattended shutdown automations.",
-        "data_description": {
-          "unique_id": "Use the dongle's lowercase MAC address (aa:bb:cc:dd:ee:ff), not its IP address. Keep this identity when changing networks."
-        },
         "data": {
           "name": "[%key:common::config_flow::data::name%]",
           "host": "[%key:common::config_flow::data::host%]",
           "port": "[%key:common::config_flow::data::port%]",
-          "unique_id": "[%key:common::config_flow::data::unique_id%]",
           "read_only": "Read-only mode"
         }
       },
@@ -32,7 +28,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Could not connect and receive a Proflame state snapshot."
+      "cannot_connect": "Could not connect and receive a Proflame state snapshot.",
+      "cannot_identify": "Connected, but Home Assistant cannot identify a unique dongle MAC address from DHCP discovery. Ensure DHCP discovery or your network integration reports this device, then retry. No settings were changed."
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
@@ -40,6 +37,7 @@
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "no_devices_found": "[%key:common::config_flow::abort::no_devices_found%]",
       "not_proflame_device": "The device did not provide an acknowledged Proflame state.",
+      "cannot_identify": "Discovery did not provide a valid dongle MAC address.",
       "reconfigure_successful": "The connection settings were updated."
     }
   },

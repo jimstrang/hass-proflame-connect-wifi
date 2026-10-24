@@ -80,12 +80,23 @@ Open **Settings > Devices & services > Add integration**, then search for
 | Name | A friendly name for the fireplace |
 | Host | The dongle's IPv4 address or resolvable hostname |
 | Port | `88` unless your device uses another WebSocket port |
-| Unique ID | Prefer the dongle's lowercase MAC address, such as `aa:bb:cc:dd:ee:ff`. Do not use its IP address. |
 | Read-only mode | Enabled by default. Keep enabled to observe state without sending any setting changes. |
 
 Setup verifies the handshake and initial state without changing settings.
-Supported DHCP discoveries are also checked before a discovery prompt appears;
-manual configuration works when discovery is unavailable.
+The integration identifies the dongle automatically using the MAC address in
+Home Assistant's DHCP discovery data; there is no editable Unique ID field.
+Supported DHCP discoveries are also checked before a discovery prompt appears.
+Manual host configuration resolves the host and matches its address to HA's
+discovery records.
+
+If a host connects but has no valid, unambiguous discovery record, setup reports
+that it cannot identify the device. Ensure HA's DHCP discovery or a network
+integration reports the dongle, then retry. The integration does not use ARP,
+guess an identity from a hostname/IP, or generate a random hardware ID. Across
+routed/VLAN networks, initial setup therefore requires discovery information to
+reach HA; simply opening TCP port 88 is not sufficient for identification.
+Existing configured identities are preserved, including legacy manually entered
+IDs. Later host changes through Reconfigure do not replace the stored identity.
 
 ### Read-only and editable modes
 
