@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.proflame_connect_wifi import client_base
 from custom_components.proflame_connect_wifi.client import ProflameClient
+from scripts import observe
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +22,7 @@ def loopback_only(monkeypatch):
         return connect(uri, **kwargs)
 
     monkeypatch.setattr(client_base, "connect", guarded_connect)
+    monkeypatch.setattr(observe, "connect", guarded_connect)
 
 
 @pytest.fixture

@@ -59,3 +59,59 @@ file.
 ## License
 
 By contributing, you agree that your contributions will be licensed under its MIT License.
+
+## Read-only RF capture tool
+
+[`scripts/observe.py`](scripts/observe.py) prepares a continuous observation
+window without installing anything into HA. Do not run it until an attended
+experiment is agreed. Supply the endpoint explicitly and choose a new log file
+outside the repository:
+
+```bash
+.venv/bin/python scripts/observe.py \
+  --url 'ws://<host>:88/' \
+  --output '/path/outside/the/repository/rf-capture.jsonl' \
+  --duration 120
+```
+
+The destination directory must already exist. The tool creates an owner-only
+JSONL file, refuses to overwrite an existing capture, sends one handshake, and
+then sends only five-second application keepalives. It never sends setting
+changes, requests another snapshot, or reconnects. It records exact received
+text (or binary bytes as hex), UTC timestamps, monotonic elapsed times, and
+session-end/error events. Logs can still contain private device metadata;
+redact them before sharing.
+
+The duration is capped at five minutes, plus bounded connection cleanup. A
+missing acknowledgement, thirty seconds without application messages, or a
+disconnect ends the capture with an error. Ctrl+C closes the socket and records
+cancellation. The log is evidence, not an automated pass/fail verdict about
+RF propagation, measurement freshness, or combustion.
+
+For the first experiment:
+
+1. Agree the physical action and starting conditions with the attending user.
+   Do not begin with a mode, thermostat, pilot, or burner test.
+2. Start one capture and establish a quiet baseline with initial state and
+   continuing application replies. Observe for about thirty seconds before any
+   adjustment.
+3. Record the UTC time immediately before and after one agreed RF-remote
+   adjustment, plus the user's physical observation. If appropriate and
+   explicitly approved, a lamp-level adjustment avoids deliberately changing
+   the burner setting.
+4. Leave the same subscription open for another thirty seconds. Do not send
+   app controls, refresh status, reconnect, or restore old settings automatically.
+5. Stop or let the capture expire, then compare raw fields and timing with the
+   reported action window. Missing replies or a disconnect make the window
+   inconclusive, not proof that RF changes are never pushed.
+
+No hardware connection is needed to validate this tool: its tests run against
+loopback mock servers and assert the exact benign send vocabulary.
+
+For a future burner-state hypothesis test, capture raw values across approved
+user-operated off, ignition, steady operation, shutdown, and thermostat
+idle/re-light states. Unobserved values must remain unclassified. Any writes to
+test controller conflicts or temperature policy require separate approval.
+
+Before sharing evidence, redact network addresses, hostnames, hardware
+identifiers, credentials, and unrelated installation information.
