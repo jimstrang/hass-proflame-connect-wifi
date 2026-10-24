@@ -283,6 +283,21 @@ async def test_optional_sensors_are_disabled_diagnostics(hass, client, field, va
     await coordinator.async_shutdown()
 
 
+async def test_pilot_mode_is_enabled_configuration(hass, client):
+    """Group the secondary pilot setting as Configuration without changing its identity."""
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    pilot = ProflamePilot(coordinator)
+    assert pilot.entity_category == EntityCategory.CONFIG
+    assert pilot.entity_registry_enabled_default is True
+    assert pilot.unique_id == "pilot_aabbccddeeff"
+    assert pilot.options == ["Continuous", "Intermitent"]
+    assert pilot.current_option == "Continuous"
+    client._handle_json_message({"pilot_mode": 0})
+    assert pilot.current_option == "Intermitent"
+    assert client._queue.empty()
+    await coordinator.async_shutdown()
+
+
 async def test_climate_ha_state_rendering_during_reconnect(hass, client):
     """HA renders unavailable capabilities without inventing a new native unit."""
     coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
