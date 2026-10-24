@@ -10,8 +10,16 @@ on:
 
 jobs:
   ruff:
-    name: "Ruff"
+    name: "HA ${{ matrix.homeassistant }} / Python ${{ matrix.python }}"
     runs-on: "ubuntu-latest"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - homeassistant: "2026.10.2"
+            python: "3.14.6"
+          - homeassistant: "2026.10.3"
+            python: "3.14.9"
     steps:
         - name: "Checkout the repository"
           uses: "actions/checkout@v4.1.0"
@@ -19,11 +27,13 @@ jobs:
         - name: "Set up Python"
           uses: actions/setup-python@v4.7.1
           with:
-            python-version: "3.11"
+            python-version: "${{ matrix.python }}"
             cache: "pip"
 
         - name: "Install requirements"
-          run: python3 -m pip install -r requirements.txt
+          run: |
+            python3 -m pip install -r requirements.txt
+            python3 -m pip install "homeassistant==${{ matrix.homeassistant }}"
 
         - name: "Run"
           run: python3 -m ruff check .
