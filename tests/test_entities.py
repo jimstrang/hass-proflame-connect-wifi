@@ -20,7 +20,6 @@ from custom_components.proflame_connect_wifi.select import ProflamePilot
 from custom_components.proflame_connect_wifi.sensor import ProflameSensor
 from custom_components.proflame_connect_wifi.switch import ProflamePower
 from custom_components.proflame_connect_wifi.const import ApiAttrs, OperatingMode, Preset
-from custom_components.proflame_connect_wifi.util import Temperature
 
 
 def drain(client):
@@ -144,7 +143,7 @@ def test_temperature_units_and_zero(client, unit, expected):
     assert client.temperature_unit == expected
     assert client.current_temperature == 0
     assert client.target_temperature == 0
-    client.set_target_temperature(Temperature.fahrenheit(68))
+    client.set_target_temperature(20 if unit == 0 else 68)
     assert drain(client) == [{"temperature_set": 200 if unit == 0 else 680}]
 
 
@@ -160,7 +159,7 @@ def test_missing_fields_are_unknown():
     assert client.light_brightness is None
     assert client.flame_height is None
     with pytest.raises(ValueError, match="reported device unit"):
-        client.set_target_temperature(Temperature.celcius(20))
+        client.set_target_temperature(20)
     with pytest.raises(ValueError, match="known operating preset"):
         client.heat()
 

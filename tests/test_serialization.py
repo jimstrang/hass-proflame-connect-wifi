@@ -1,7 +1,10 @@
 """Inspect control output without creating any network connection."""
 import pytest
 
+from homeassistant.components.climate.services import _async_service_temperature_set
+from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
 
 from custom_components.proflame_connect_wifi.client import ProflameClient
 from custom_components.proflame_connect_wifi.climate import ProflameClimate
@@ -33,6 +36,67 @@ async def test_control_serialization(hass, client):
         {"main_mode": 2}, {"main_mode": 3},
     ]
     await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("unit,native,encoded", [
+    (0, 0, 0), (1, 0, 0), (0, 20.5, 205), (1, 68.5, 685),
+])
+def test_native_temperature_serialization(client, unit, native, encoded):
+    """Encode the supplied native-unit value directly, preserving legitimate zero."""
+    client._handle_json_message({"temperature_unit": unit})
+    client.set_target_temperature(native)
+    assert drain(client) == [{"temperature_set": encoded}]
+
+
+@pytest.mark.parametrize("unit,ha_units,requested,encoded,limits", [
+    (0, US_CUSTOMARY_SYSTEM, 68, 200, (5, 35)),
+    (1, METRIC_SYSTEM, 20, 680, (41, 95)),
+    (0, METRIC_SYSTEM, 20.5, 205, (5, 35)),
+    (1, US_CUSTOMARY_SYSTEM, 69, 690, (41, 95)),
+])
+async def test_ha_converts_temperature_once(hass, client, unit, ha_units, requested, encoded, limits):
+    """Exercise HA's actual service conversion instead of simulating a native-unit input."""
+    hass.config.units = ha_units
+    client._handle_json_message({"temperature_unit": unit, "main_mode": 2})
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    climate = ProflameClimate(coordinator)
+    climate.hass = hass
+    assert (climate.min_temp, climate.max_temp) == limits
+    await _async_service_temperature_set(
+        climate, ServiceCall(hass, "climate", "set_temperature", {"temperature": requested}),
+    )
+    assert drain(client) == [{"temperature_set": encoded}]
+    await coordinator.async_shutdown()
+
+
+async def test_preset_options_and_dispatch_use_existing_enum(hass, client):
+    """Keep option order and control output while rejecting an unsupported preset explicitly."""
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    climate = ProflameClimate(coordinator)
+    assert climate.preset_modes == ["Off", "Manual", "Thermostat", "Smart"]
+    client._handle_json_message({"main_mode": 1, "flame_control": 3})
+    for preset, expected in (
+        ("Off", [{"flame_control": 0}, {"main_mode": 1}]),
+        ("Manual", [{"main_mode": 1}]),
+        ("Thermostat", [{"main_mode": 2}]),
+        ("Smart", [{"main_mode": 3}]),
+    ):
+        await climate.async_set_preset_mode(preset)
+        assert drain(client) == expected
+    with pytest.raises(ValueError):
+        await climate.async_set_preset_mode("unsupported")
+    assert drain(client) == []
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("method", ["set_fan_speed", "set_light_brightness", "set_flame_height"])
+def test_compact_clamp_preserves_invalid_value_rejection(client, method):
+    """Do not turn NaN or booleans into successful setting writes during clamping."""
+    client._handle_json_message({"main_mode": 1})
+    for value in (float("nan"), True, False):
+        with pytest.raises(ValueError):
+            getattr(client, method)(value)
+        assert drain(client) == []
 
 
 @pytest.mark.parametrize("height", range(7))

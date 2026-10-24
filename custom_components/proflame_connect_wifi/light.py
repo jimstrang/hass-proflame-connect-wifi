@@ -10,20 +10,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, MAX_LIGHT_BRIGHTNESS, PROFLAME_COORDINATOR
+from .const import MAX_LIGHT_BRIGHTNESS
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntry[ProflameDataCoordinator],
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create the lights for Proflame fireplaces."""
-    entry_id = config_entry.entry_id
-    coordinator: ProflameDataCoordinator = hass.data[DOMAIN][entry_id][PROFLAME_COORDINATOR]
-    light = ProflameLight(coordinator)
+    light = ProflameLight(config_entry.runtime_data)
     async_add_entities([light])
 
 class ProflameLight(ProflameEntity, LightEntity):

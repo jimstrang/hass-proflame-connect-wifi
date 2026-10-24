@@ -1,5 +1,6 @@
 """Test setup retry, unload failures, shutdown, and cancellation."""
 import asyncio
+from importlib import import_module
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,9 +9,8 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components import proflame_connect_wifi as integration
-from custom_components.proflame_connect_wifi.const import (
-    DOMAIN, PROFLAME_CLIENT, PROFLAME_COORDINATOR,
-)
+from custom_components.proflame_connect_wifi.const import DOMAIN
+from custom_components.proflame_connect_wifi.coordinator import ProflameDataCoordinator
 
 
 @pytest.fixture
@@ -21,6 +21,7 @@ def entry():
     result.unique_id = "test"
     result.entry_id = "entry"
     result.title = "Fireplace"
+    result.runtime_data = None
     return result
 
 
@@ -44,7 +45,8 @@ async def test_setup_initial_timeout_closes_client(setup_hass, entry):
     ), pytest.raises(ConfigEntryNotReady):
         await integration.async_setup_entry(setup_hass, entry)
     client.close.assert_awaited_once()
-    assert entry.entry_id not in setup_hass.data.get(DOMAIN, {})
+    assert entry.runtime_data is None
+    assert DOMAIN not in setup_hass.data
     setup_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
 
@@ -68,15 +70,16 @@ async def test_unload_only_closes_after_platforms_unload(setup_hass, entry, clie
         client, "open", new=AsyncMock(),
     ):
         assert await integration.async_setup_entry(setup_hass, entry)
-    coordinator = setup_hass.data[DOMAIN][entry.entry_id][PROFLAME_COORDINATOR]
+    coordinator = entry.runtime_data
+    assert coordinator.client is client
+    assert DOMAIN not in setup_hass.data
     setup_hass.config_entries.async_unload_platforms.return_value = unload_ok
     assert await integration.async_unload_entry(setup_hass, entry) is unload_ok
     if unload_ok:
-        assert entry.entry_id not in setup_hass.data[DOMAIN]
         assert not client.connected
         assert not client._connection_callbacks
     else:
-        assert setup_hass.data[DOMAIN][entry.entry_id][PROFLAME_CLIENT] is client
+        assert entry.runtime_data is coordinator
         assert client.connected
         await coordinator.async_shutdown()
 
@@ -90,7 +93,8 @@ async def test_forwarding_failure_releases_callbacks(setup_hass, entry, client):
         await integration.async_setup_entry(setup_hass, entry)
     assert not client.connected
     assert not client._connection_callbacks
-    assert entry.entry_id not in setup_hass.data[DOMAIN]
+    assert entry.runtime_data.client is client
+    assert DOMAIN not in setup_hass.data
 
 
 async def test_ha_shutdown_closes_client(setup_hass, entry, client):
@@ -119,3 +123,21 @@ async def test_reload_does_not_accumulate_subscriptions(setup_hass, entry, clien
         assert await integration.async_unload_entry(setup_hass, entry)
         assert not client._connection_callbacks
         assert client._callbacks == [client._track_state]
+
+
+@pytest.mark.parametrize("platform,count", [
+    ("climate", 1), ("fan", 1), ("light", 1), ("number", 1),
+    ("select", 1), ("sensor", 3), ("switch", 1),
+])
+async def test_platforms_use_entry_runtime_data(hass, entry, client, platform, count):
+    """All platforms share the entry's coordinator without a parallel hass.data registry."""
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    entry.runtime_data = coordinator
+    entities = []
+    module = import_module(f"custom_components.proflame_connect_wifi.{platform}")
+    await module.async_setup_entry(hass, entry, entities.extend)
+    assert len(entities) == count
+    assert all(entity.coordinator is coordinator for entity in entities)
+    assert all(entity._device is client for entity in entities)
+    assert DOMAIN not in hass.data
+    await coordinator.async_shutdown()

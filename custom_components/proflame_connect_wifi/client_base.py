@@ -402,11 +402,6 @@ class ProflameClientBase:
         formatted = f"PF[{self._host}] {msg}"
         self._logger.error(formatted, *args)
 
-    def _info(self, msg, *args) -> None:
-        """Shortcut for info logging."""
-        formatted = f"PF[{self._host}] {msg}"
-        self._logger.info(formatted, *args)
-
     def _warning(self, msg, *args) -> None:
         """Shortcut for warning logging."""
         formatted = f"PF[{self._host}] {msg}"

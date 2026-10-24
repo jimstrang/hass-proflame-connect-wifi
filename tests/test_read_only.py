@@ -157,7 +157,9 @@ async def test_setup_wires_safe_legacy_default(hass, snapshot, configured):
         client.turn_off_light()
         assert client._queue.get_nowait() == {"lamp_control": 0}
         client._queue.task_done()
-    await hass.data["proflame_connect_wifi"]["entry"]["coordinator"].async_shutdown()
+    assert entry.runtime_data.client is client
+    assert "proflame_connect_wifi" not in hass.data
+    await entry.runtime_data.async_shutdown()
 
 
 @pytest.mark.parametrize("field,value", [("lamp_control", 0), ("main_mode", 0)])

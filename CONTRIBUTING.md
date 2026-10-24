@@ -48,6 +48,9 @@ fireplace or live HA instance. Keep the non-loopback connection guard enabled.
 
 When changing the client or entities:
 
+- Store each entry's coordinator in `ConfigEntry.runtime_data`; platforms use
+  that coordinator and its client. Climate service inputs are already in the
+  device's native unit, so encode them as tenths without another unit conversion.
 - Preserve missing values, legitimate zeros, partial updates, and raw unknown
   fields. Keep unclassified fields out of entity state.
 - Test initial-state handling across multiple messages, malformed input,

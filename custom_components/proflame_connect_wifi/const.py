@@ -1,8 +1,6 @@
 """Constants for the Proflame integration."""
 from enum import IntEnum, StrEnum
 
-from .util import Temperature
-
 
 class ApiAttrs(StrEnum):
     """Available attributes accessible via the API."""
@@ -92,9 +90,6 @@ KEEPALIVE_TIMEOUT = 30
 # Seconds to wait before reconnecting after a dropped connection
 RECONNECT_DELAY = 5
 
-PROFLAME_CLIENT = "client"
-PROFLAME_COORDINATOR = "coordinator"
-
 ADJUSTABLE_MODES = [
     OperatingMode.MANUAL,
     OperatingMode.THERMOSTAT,
@@ -110,5 +105,6 @@ MIN_FLAME_HEIGHT = 0
 MAX_LIGHT_BRIGHTNESS = 6
 MIN_LIGHT_BRIGHTNESS = 0
 
-MAX_TEMPERATURE: Temperature = Temperature.celcius(35)
-MIN_TEMPERATURE: Temperature = Temperature.celcius(5)
+# Temperature limits in Celsius.
+MAX_TEMPERATURE = 35
+MIN_TEMPERATURE = 5

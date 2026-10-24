@@ -16,7 +16,7 @@ from .const import (
     PilotMode,
     Preset,
 )
-from .util import Temperature, constrain
+from .util import constrain
 
 
 class ProflameClient(ProflameClientBase):
@@ -210,14 +210,11 @@ class ProflameClient(ProflameClientBase):
         if preset == Preset.SMART:
             self.set_operating_mode(OperatingMode.SMART)
 
-    def set_target_temperature(self, temperature: Temperature) -> None:
-        """Set the desired temperature for themostat based modes."""
+    def set_target_temperature(self, temperature: float) -> None:
+        """Set the target in the device's reported unit."""
         if self.temperature_unit is None:
             raise ValueError("Cannot set temperature without a reported device unit")
-        if self.temperature_unit == UnitOfTemperature.CELSIUS:
-            self.set_state(ApiAttrs.TARGET_TEMPERATURE, int(temperature.to_celcius() * 10))
-        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
-            self.set_state(ApiAttrs.TARGET_TEMPERATURE, int(temperature.to_fahrenheit() * 10))
+        self.set_state(ApiAttrs.TARGET_TEMPERATURE, int(temperature * 10))
 
     def turn_off(self):
         """Turn off full device."""

@@ -1,13 +1,13 @@
 """The Proflame integration."""
 from __future__ import annotations
 
-from homeassistant.config_entries import ConfigEntry, ConfigType
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .client import ProflameClient
-from .const import CONF_READ_ONLY, DOMAIN, PROFLAME_CLIENT, PROFLAME_COORDINATOR
+from .const import CONF_READ_ONLY
 from .coordinator import ProflameDataCoordinator
 
 PLATFORMS: list[Platform] = [
@@ -21,11 +21,9 @@ PLATFORMS: list[Platform] = [
 ]
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up Proflame fireplaces."""
-    return True
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry[ProflameDataCoordinator],
+) -> bool:
     """Set up Proflame from a config entry."""
 
     client = ProflameClient(
@@ -41,10 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise ConfigEntryNotReady("No acknowledged initial Proflame state")
 
         coordinator = ProflameDataCoordinator(hass, client, entry.title, entry)
-        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-            PROFLAME_CLIENT: client,
-            PROFLAME_COORDINATOR: coordinator,
-        }
+        entry.runtime_data = coordinator
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
@@ -52,7 +47,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.async_shutdown()
         else:
             await client.close()
-        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         raise
     async def async_stop(event) -> None:
         """Close the local socket when Home Assistant stops."""
@@ -63,11 +57,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(
+    hass: HomeAssistant, entry: ConfigEntry[ProflameDataCoordinator],
+) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        coordinator = hass.data[DOMAIN][entry.entry_id][PROFLAME_COORDINATOR]
-        await coordinator.async_shutdown()
-        hass.data[DOMAIN].pop(entry.entry_id)
+        await entry.runtime_data.async_shutdown()
 
     return unload_ok

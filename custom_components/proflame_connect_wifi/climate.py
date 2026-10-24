@@ -12,13 +12,11 @@ from homeassistant.components.climate import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .client import Temperature
 from .const import (
-    DOMAIN,
     MAX_TEMPERATURE,
     MIN_TEMPERATURE,
-    PROFLAME_COORDINATOR,
     Preset,
 )
 from .coordinator import ProflameDataCoordinator
@@ -27,13 +25,11 @@ from .entity import ProflameEntity
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntry[ProflameDataCoordinator],
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create the number for Proflame fireplaces."""
-    entry_id = config_entry.entry_id
-    coordinator: ProflameDataCoordinator = hass.data[DOMAIN][entry_id][PROFLAME_COORDINATOR]
-    climate = ProflameClimate(coordinator)
+    climate = ProflameClimate(config_entry.runtime_data)
     async_add_entities([climate])
 
 class ProflameClimate(ProflameEntity, ClimateEntity):
@@ -43,12 +39,7 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
         HVACMode.HEAT,
         HVACMode.OFF,
     ]
-    _attr_preset_modes = [
-        'Off',
-        'Manual',
-        'Thermostat',
-        'Smart'
-    ]
+    _attr_preset_modes = list(Preset)
     _attr_supported_features = (
         ClimateEntityFeature.PRESET_MODE |
         ClimateEntityFeature.TARGET_TEMPERATURE |
@@ -86,16 +77,16 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature."""
-        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
-            return MAX_TEMPERATURE.to_fahrenheit()
-        return MAX_TEMPERATURE.to_celcius()
+        return TemperatureConverter.convert(
+            MAX_TEMPERATURE, UnitOfTemperature.CELSIUS, self.temperature_unit,
+        )
 
     @property
     def min_temp(self) -> float:
         """Return the minimum temperature."""
-        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
-            return MIN_TEMPERATURE.to_fahrenheit()
-        return MIN_TEMPERATURE.to_celcius()
+        return TemperatureConverter.convert(
+            MIN_TEMPERATURE, UnitOfTemperature.CELSIUS, self.temperature_unit,
+        )
 
     @property
     def preset_mode(self) -> str | None:
@@ -120,12 +111,7 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
         temperature = kwargs.get('temperature', None)
         if temperature is None:
             raise ValueError("A target temperature is required")
-        if self._device.temperature_unit is None:
-            raise ValueError("Cannot set temperature without a reported device unit")
-        if self.temperature_unit == UnitOfTemperature.CELSIUS:
-            self._device.set_target_temperature(Temperature.celcius(temperature))
-        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
-            self._device.set_target_temperature(Temperature.fahrenheit(temperature))
+        self._device.set_target_temperature(temperature)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
@@ -144,11 +130,4 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""
-        if preset_mode == 'Off':
-            self._device.set_preset(Preset.OFF)
-        if preset_mode == 'Manual':
-            self._device.set_preset(Preset.MANUAL)
-        if preset_mode == 'Thermostat':
-            self._device.set_preset(Preset.THERMOSTAT)
-        if preset_mode == 'Smart':
-            self._device.set_preset(Preset.SMART)
+        self._device.set_preset(Preset(preset_mode))

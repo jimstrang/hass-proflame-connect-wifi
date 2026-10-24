@@ -10,19 +10,18 @@ from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCatego
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PROFLAME_COORDINATOR, ApiAttrs
+from .const import ApiAttrs
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: ConfigEntry[ProflameDataCoordinator],
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create sensors for Proflame fireplaces."""
-    entry_id = config_entry.entry_id
-    coordinator: ProflameDataCoordinator = hass.data[DOMAIN][entry_id][PROFLAME_COORDINATOR]
+    coordinator = config_entry.runtime_data
     async_add_entities([
         ProflameSensor(coordinator, ApiAttrs.FREE_HEAP, icon='mdi:code-block-tags'),
         ProflameSensor(coordinator, ApiAttrs.MIN_FREE_HEAP, icon='mdi:code-block-tags'),
