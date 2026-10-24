@@ -3,13 +3,14 @@
     "flow_title": "{device}",
     "step": {
       "discovery_confirm": {
-        "description": "Give your fireplace a name.",
+        "description": "Give your fireplace a name. Read-only mode blocks all setting writes. If disabled, RF-initiated operation can override Wi-Fi commands, including Off. Do not rely on unattended shutdown automations.",
         "data": {
-          "name": "[%key:common::config_flow::data::name%]"
+          "name": "[%key:common::config_flow::data::name%]",
+          "read_only": "Read-only mode"
         }
       },
       "user": {
-        "description": "Enter the details of your fireplace.",
+        "description": "Enter the details of your fireplace. Read-only mode blocks all setting writes. If disabled, RF-initiated operation can override Wi-Fi commands, including Off. Do not rely on unattended shutdown automations.",
         "data_description": {
           "unique_id": "Use the dongle's lowercase MAC address (aa:bb:cc:dd:ee:ff), not its IP address. Keep this identity when changing networks."
         },
@@ -17,14 +18,16 @@
           "name": "[%key:common::config_flow::data::name%]",
           "host": "[%key:common::config_flow::data::host%]",
           "port": "[%key:common::config_flow::data::port%]",
-          "unique_id": "[%key:common::config_flow::data::unique_id%]"
+          "unique_id": "[%key:common::config_flow::data::unique_id%]",
+          "read_only": "Read-only mode"
         }
       },
       "reconfigure": {
-        "description": "Change the host or port without changing the device identity.",
+        "description": "Change the host, port, or read-only mode without changing device identity. Disabling read-only permits setting writes, but does not override the RF remote. RF-initiated operation can overwrite commands, including Off. Do not rely on unattended shutdown automations.",
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
-          "port": "[%key:common::config_flow::data::port%]"
+          "port": "[%key:common::config_flow::data::port%]",
+          "read_only": "Read-only mode"
         }
       }
     },

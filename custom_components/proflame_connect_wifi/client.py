@@ -22,10 +22,10 @@ class ProflameClient(ProflameClientBase):
     """Client used for interacting with Proflame fireplaces."""
 
     def __init__(
-        self, device_id, host, port=None, logger=None,
+        self, device_id, host, port=None, logger=None, *, read_only: bool = True,
     ) -> None:
         """Create new class instance."""
-        super().__init__(device_id, host, port, logger)
+        super().__init__(device_id, host, port, logger, read_only=read_only)
         self._stored_fan_speed = MAX_FAN_SPEED
         self._stored_flame = MAX_FLAME_HEIGHT
         self._stored_light_brightness = MAX_LIGHT_BRIGHTNESS
@@ -145,6 +145,7 @@ class ProflameClient(ProflameClientBase):
 
     def heat(self) -> None:
         """Set the fireplace to the last heat generating configuration."""
+        self._check_writable()
         preset = self.preset
         if preset is None:
             raise ValueError("Cannot restore heat without a known operating preset")
@@ -185,6 +186,7 @@ class ProflameClient(ProflameClientBase):
 
     def set_preset(self, preset: Preset):
         """Set the fireplace state based on a preset."""
+        self._check_writable()
         if preset == Preset.OFF:
             if self.operating_mode != OperatingMode.OFF:
                 self.set_flame_height(0)

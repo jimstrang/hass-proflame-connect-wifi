@@ -75,7 +75,7 @@ def indexed_initial_frames():
 @pytest.fixture
 def client(snapshot):
     """Create a ready simulated client without a socket or dispatcher."""
-    result = ProflameClient("aa:bb:cc:dd:ee:ff", "127.0.0.1")
+    result = ProflameClient("aa:bb:cc:dd:ee:ff", "127.0.0.1", read_only=False)
     result._handle_message("PROFLAMECONNECTIONOPEN")
     result._handle_message(json.dumps(snapshot))
     return result

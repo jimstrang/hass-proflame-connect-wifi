@@ -62,6 +62,7 @@ class Preset(StrEnum):
 
 
 DOMAIN = "proflame_connect_wifi"
+CONF_READ_ONLY = "read_only"
 
 DEFAULT_DEVICE = 'Proflame Fireplace'
 DEFAULT_NAME = 'Fireplace'

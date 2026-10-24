@@ -8,6 +8,8 @@ import time
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
+from homeassistant.exceptions import HomeAssistantError
+
 from .const import (
     DEFAULT_PORT,
     INITIAL_STATE_TIMEOUT,
@@ -38,8 +40,12 @@ class ProflameClientBase:
 
     def __init__(
         self, device_id, host, port=None, logger=None, auto_reconnect=True,
+        *, read_only: bool = True,
     ) -> None:
         """Create new class instance."""
+        if not isinstance(read_only, bool):
+            raise TypeError("read_only must be a boolean")
+        self._read_only = read_only
         self._auto_reconnect = auto_reconnect
         self._device_id = device_id
         self._host = host
@@ -359,8 +365,22 @@ class ProflameClientBase:
         self._connection_callbacks.append(callback)
         return lambda: self._connection_callbacks.remove(callback)
 
+    @property
+    def read_only(self) -> bool:
+        """Return whether setting writes are disabled for this client."""
+        return self._read_only
+
+    def _check_writable(self) -> None:
+        """Reject control actions without queuing or transmitting any setting."""
+        if self.read_only:
+            raise HomeAssistantError(
+                "Proflame is in read-only mode. Use Reconfigure to enable editing. "
+                "RF remote settings may override Wi-Fi commands, including Off."
+            )
+
     def set_state(self, field: str, value: int) -> None:
         """Send a state update to the fireplace."""
+        self._check_writable()
         if not self.connected:
             raise ConnectionError("Proflame is not ready; command was not queued")
         if field not in STATE_RANGES:

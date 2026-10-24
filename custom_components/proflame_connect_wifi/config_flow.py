@@ -20,10 +20,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .client import ProflameClient
-from .const import DEFAULT_DEVICE, DEFAULT_NAME, DEFAULT_PORT, DOMAIN
+from .const import CONF_READ_ONLY, DEFAULT_DEVICE, DEFAULT_NAME, DEFAULT_PORT, DOMAIN
 
 DISCOVERY_CONFIRM_SCHEMA = vol.Schema({
     vol.Required(CONF_NAME, default=DEFAULT_NAME): str,
+    vol.Required(CONF_READ_ONLY, default=True): bool,
 })
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ def build_user_schema(user_input: dict[str, Any] | None = None):
         vol.Required(CONF_HOST, default=state.get(CONF_HOST, None)): str,
         vol.Required(CONF_PORT, default=state.get(CONF_PORT, DEFAULT_PORT)): cv.port,
         vol.Required(CONF_UNIQUE_ID, default=state.get(CONF_UNIQUE_ID, None)): vol.Match(r".*[A-Za-z0-9].*"),
+        vol.Required(CONF_READ_ONLY, default=state.get(CONF_READ_ONLY, True)): bool,
     })
 
 def resolve_ip(host) -> str:
@@ -139,6 +141,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_IP_ADDRESS: ip,
                 CONF_PORT: user_input[CONF_PORT],
                 CONF_UNIQUE_ID: self.unique_id,
+                CONF_READ_ONLY: user_input.get(CONF_READ_ONLY, True),
             },
             title=user_input[CONF_NAME],
         )
@@ -161,7 +164,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_discovery_confirm()
 
     async def async_step_reconfigure(self, user_input=None):
-        """Change the address, preserving existing identities."""
+        """Change the address or access mode, preserving existing identities."""
         entry = self._get_reconfigure_entry()
         errors = {}
         if user_input is not None:
@@ -175,7 +178,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input[CONF_HOST], ip, entry.entry_id,
                 )
                 return self.async_update_reload_and_abort(
-                    entry, data_updates={**user_input, CONF_IP_ADDRESS: ip},
+                    entry, data_updates={
+                        **user_input, CONF_IP_ADDRESS: ip,
+                        CONF_READ_ONLY: user_input.get(
+                            CONF_READ_ONLY, entry.data.get(CONF_READ_ONLY, True),
+                        ),
+                    },
                 )
         state = user_input or entry.data
         return self.async_show_form(
@@ -183,6 +191,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required(CONF_HOST, default=state[CONF_HOST]): str,
                 vol.Required(CONF_PORT, default=state[CONF_PORT]): cv.port,
+                vol.Required(
+                    CONF_READ_ONLY,
+                    default=state.get(CONF_READ_ONLY, entry.data.get(CONF_READ_ONLY, True)),
+                ): bool,
             }),
             errors=errors,
         )
@@ -197,6 +209,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_IP_ADDRESS: self.context[CONF_IP_ADDRESS],
                     CONF_PORT: DEFAULT_PORT,
                     CONF_UNIQUE_ID: self.unique_id,
+                    CONF_READ_ONLY: user_input.get(CONF_READ_ONLY, True),
                 },
                 title=user_input[CONF_NAME],
             )

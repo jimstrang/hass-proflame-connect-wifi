@@ -32,7 +32,23 @@ Platform | Description
 
 ## Configuration is done in the UI
 
-<!---->
+## Read-only and editable access
+
+Read-only mode is enabled by default, including for existing entries without an
+explicit setting. Entities and identifiers are preserved, and state updates and
+keepalives continue. Controls can remain visible, but setting actions raise an
+error without queuing a command. Existing control automations will receive this
+error until editing is explicitly enabled.
+
+Use the entry's Reconfigure action to change the access mode. Disabling read-only
+permits writes but does not override the RF remote. In attended testing, settings
+from RF-initiated operation repeatedly overwrote Wi-Fi commands while the remote
+remained in range. Wi-Fi Off and the official iPhone app's Off both failed to
+physically stop RF-initiated burning, despite transient Off echoes. Do not rely
+on timer or presence-based automations to extinguish an RF-started fireplace.
+Keep physical controls available; no takeover or repeated-write mechanism is
+implemented.
+
 
 ## Contributions are welcome!
 

@@ -7,6 +7,8 @@ import pytest
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
+from homeassistant.exceptions import HomeAssistantError
+
 from custom_components.proflame_connect_wifi import client_base
 from custom_components.proflame_connect_wifi.client_base import ProflameClientBase
 from custom_components.proflame_connect_wifi.const import ApiControl
@@ -42,7 +44,7 @@ async def test_initial_partial_malformed_and_cleanup(snapshot):
 
     async with serve(device, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        client = ProflameClientBase("test", "127.0.0.1", port)
+        client = ProflameClientBase("test", "127.0.0.1", port, read_only=False)
         changes = []
         client.register_connection_callback(changes.append)
         try:
@@ -103,7 +105,7 @@ async def test_reconnect_fresh_state_and_no_stale_commands(monkeypatch, snapshot
 
     async with serve(device, "127.0.0.1", 0) as server:
         client = ProflameClientBase(
-            "test", "127.0.0.1", server.sockets[0].getsockname()[1],
+            "test", "127.0.0.1", server.sockets[0].getsockname()[1], read_only=False,
         )
         availability = []
         client.register_connection_callback(availability.append)
@@ -220,7 +222,7 @@ async def test_initial_state_across_multiple_messages(
                 ready = ack_first and {"main_mode", "temperature_unit"} <= client.full_state.keys()
                 assert client.connected is ready
                 if not ready:
-                    with pytest.raises(ConnectionError):
+                    with pytest.raises(HomeAssistantError, match="read-only"):
                         client.set_state("fan_control", 1)
             release_ack.set()
             assert await client.wait_for_state(1)

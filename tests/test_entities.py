@@ -150,7 +150,7 @@ def test_temperature_units_and_zero(client, unit, expected):
 
 def test_missing_fields_are_unknown():
     """No missing state is invented as Celsius, off, or heating."""
-    client = ProflameClient("test", "127.0.0.1")
+    client = ProflameClient("test", "127.0.0.1", read_only=False)
     assert client.current_temperature is None
     assert client.target_temperature is None
     assert client.temperature_unit is None

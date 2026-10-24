@@ -55,6 +55,8 @@ async def test_manual_configuration_and_validation(flow):
     assert result["data"]["ip_address"] == "127.0.0.1"
     assert result["data"]["host"] == "localhost"
     assert result["data"]["unique_id"] == "aa:bb:cc:dd:ee:ff"
+    assert result["data"]["read_only"] is True
+    assert form["data_schema"](data)["read_only"] is True
     probe.assert_awaited_once_with("localhost", 88)
     executor.assert_called_once_with(resolve, "localhost")
     for invalid_port in [0, 65536, -1]:
@@ -116,6 +118,7 @@ async def test_dhcp_protocol_filter(flow, speaks_proflame):
         assert result["step_id"] == "discovery_confirm"
         created = await flow.async_step_discovery_confirm({"name": "Fireplace"})
         assert created["data"]["unique_id"] == "aa:bb:cc:dd:ee:ff"
+        assert created["data"]["read_only"] is True
     else:
         assert result["type"] == FlowResultType.ABORT
         assert result["reason"] == "not_proflame_device"
@@ -153,5 +156,56 @@ async def test_reconfigure_preserves_identity(flow):
     assert entry.data == {
         "name": "Fireplace", "host": "new-host", "port": 89,
         "ip_address": "127.0.0.2", "unique_id": "aa:bb:cc:dd:ee:ff",
+        "read_only": True,
     }
+    reload_entry.assert_called_once_with(entry.entry_id)
+
+
+@pytest.mark.parametrize("read_only", [True, False])
+async def test_manual_access_mode_is_persisted(flow, read_only):
+    """Persist explicit access choices rather than inferring control ownership."""
+    data = {
+        "name": "Fireplace", "host": "localhost", "port": 88,
+        "unique_id": "test", "read_only": read_only,
+    }
+    with patch.object(
+        flow, "_async_validate_address", new=AsyncMock(return_value="127.0.0.1"),
+    ):
+        result = await flow.async_step_user(data)
+    assert result["data"]["read_only"] is read_only
+
+
+@pytest.mark.parametrize("read_only", [True, False])
+async def test_discovery_access_mode_is_persisted(flow, read_only):
+    """Discovery confirmation offers the same explicit write opt-in as manual setup."""
+    flow.context.update({"host": "127.0.0.1", "ip_address": "127.0.0.1"})
+    form = await flow.async_step_discovery_confirm()
+    assert form["data_schema"]({"name": "Fireplace"})["read_only"] is True
+    result = await flow.async_step_discovery_confirm({
+        "name": "Fireplace", "read_only": read_only,
+    })
+    assert result["data"]["read_only"] is read_only
+
+
+@pytest.mark.parametrize("previous,new", [(None, False), (False, True), (True, False)])
+async def test_reconfigure_access_mode_preserves_identity(flow, previous, new):
+    """Enable/disable editing through entry reload without new entity identities."""
+    entry = make_entry(**({} if previous is None else {"read_only": previous}))
+    flow.hass.config_entries._entries[entry.entry_id] = entry
+    flow.context = {"source": "reconfigure", "entry_id": entry.entry_id}
+    with patch.object(flow, "_get_reconfigure_entry", return_value=entry), patch.object(
+        flow, "_async_current_entries", return_value=[entry],
+    ), patch.object(
+        flow, "_async_validate_address", new=AsyncMock(return_value="127.0.0.1"),
+    ), patch.object(flow.hass.config_entries, "async_schedule_reload") as reload_entry:
+        form = await flow.async_step_reconfigure()
+        assert form["data_schema"]({"host": "localhost", "port": 88})["read_only"] is (
+            True if previous is None else previous
+        )
+        result = await flow.async_step_reconfigure({
+            "host": entry.data["host"], "port": 88, "read_only": new,
+        })
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data["read_only"] is new
+    assert entry.unique_id == "aa:bb:cc:dd:ee:ff"
     reload_entry.assert_called_once_with(entry.entry_id)

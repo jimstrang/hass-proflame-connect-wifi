@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .client import ProflameClient
-from .const import DOMAIN, PROFLAME_CLIENT, PROFLAME_COORDINATOR
+from .const import CONF_READ_ONLY, DOMAIN, PROFLAME_CLIENT, PROFLAME_COORDINATOR
 from .coordinator import ProflameDataCoordinator
 
 PLATFORMS: list[Platform] = [
@@ -32,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_id=entry.unique_id,
         host=entry.data[CONF_HOST],
         port=entry.data[CONF_PORT],
+        read_only=entry.data.get(CONF_READ_ONLY, True),
     )
     coordinator = None
     try:
