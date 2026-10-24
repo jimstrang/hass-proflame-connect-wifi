@@ -16,12 +16,12 @@ from homeassistant.const import (
     CONF_UNIQUE_ID,
 )
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
-from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .client import ProflameClient
 from .const import CONF_READ_ONLY, DEFAULT_DEVICE, DEFAULT_NAME, DEFAULT_PORT, DOMAIN
+from .util import discovery_mac
 
 DISCOVERY_CONFIRM_SCHEMA = vol.Schema({
     vol.Required(CONF_NAME, default=DEFAULT_NAME): str,
@@ -48,18 +48,6 @@ def resolve_ip(host) -> str:
         port=None,
         proto=6,
     )][0]
-
-
-def discovery_mac(value: str) -> str | None:
-    """Normalize only usable hardware addresses supplied by discovery."""
-    mac = format_mac(value)
-    if (
-        re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac) is None
-        or mac == "00:00:00:00:00:00"
-        or int(mac[:2], 16) & 1
-    ):
-        return None
-    return mac
 
 
 async def test_connectivity(host: str, port: int = DEFAULT_PORT) -> bool:

@@ -4,11 +4,12 @@ import re
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .client import ProflameClient
 from .const import DOMAIN
+from .util import discovery_mac
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ class ProflameDataCoordinator(DataUpdateCoordinator):
             model='Generic',
             name=self.device_name
         )
+        if (mac := discovery_mac(self.client.device_id)) is not None:
+            self.device_info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
 
     async def async_shutdown(self) -> None:
         """Release the push subscriptions and connection."""

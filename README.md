@@ -98,6 +98,11 @@ reach HA; simply opening TCP port 88 is not sufficient for identification.
 Existing configured identities are preserved, including legacy manually entered
 IDs. Later host changes through Reconfigure do not replace the stored identity.
 
+For valid MAC-based identities, the integration also advertises HA's standard
+network-MAC device connection so network integrations such as UniFi can correlate
+the same hardware. HA manages the relationship; the integration does not force
+device-record merges or replace existing device/entity identifiers.
+
 ### Read-only and editable modes
 
 **Read-only mode is the default, including for existing entries that do not yet

@@ -246,6 +246,9 @@ async def test_entities_identity_availability_and_cleanup(hass, client):
     assert coordinator.device_info["identifiers"] == {
         ("proflame_connect_wifi", "aa:bb:cc:dd:ee:ff"),
     }
+    assert coordinator.device_info["connections"] == {
+        ("mac", "aa:bb:cc:dd:ee:ff"),
+    }
     client._set_connected(False)
     assert not any(entity.available for entity in entities)
     client._state.clear()
