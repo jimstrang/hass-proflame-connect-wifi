@@ -80,7 +80,7 @@
     },
     "switch": {
       "fireplace": {
-        "name": "Fireplace"
+        "name": "Device power"
       }
     }
   }

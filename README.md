@@ -150,13 +150,26 @@ hardware capabilities.
 | Light | Configured lamp brightness, levels 0-6, presented as HA brightness |
 | Number | Configured flame height, levels 0-6; not a flame sensor |
 | Select: Pilot mode (configuration) | Continuous pilot (CPI) / intermittent pilot (IPI) setting, not a pilot-flame sensor |
-| Switch | Full-device operating-mode on/off |
+| Switch: Device power | Reported device operating-mode on/off, independent of the climate preset and configured flame height |
 | Sensors (diagnostic, disabled by default) | Free heap, minimum free heap, and WiFi signal, when reported by the firmware |
 
 **Climate Off and the power switch are different controls.** Climate Off
 preserves the inherited behavior of setting flame height to zero and selecting
 Manual mode, unless already device-Off. The power switch sends device Off.
 Their physical effects require validation on the specific fireplace.
+
+Device power shows On for a reported nonzero operating mode, including Manual
+with flame height zero; climate can correctly show Off at the same time.
+Turning Device power on restores the remembered operating mode only. It does
+not send an extra flame-restoration command. Use climate Heat/Manual or the
+flame-height control when deliberately requesting heat. Mode-only On can still
+ignite a burner depending on retained device settings; it is not a safe-state
+guarantee. Neither entity confirms physical combustion.
+
+This corrects the earlier power-switch display, which treated the Off climate
+preset as device-Off and could appear to revert after a mode-only On command.
+Existing entity IDs and unique IDs are unchanged; the default label is now
+Device power unless the user has supplied a custom name.
 
 ## Behavior and limitations
 

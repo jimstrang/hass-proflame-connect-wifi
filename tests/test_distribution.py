@@ -70,6 +70,14 @@ def test_pilot_selector_has_a_distinct_translated_name():
         assert translations["entity"]["select"]["pilot"]["name"] == "Pilot mode"
 
 
+def test_device_power_has_a_distinct_translated_name():
+    """Use a device-power label rather than implying confirmed burner operation."""
+    directory = ROOT / "custom_components" / DOMAIN
+    for filename in ("strings.json", "translations/en.json"):
+        translations = json.loads((directory / filename).read_text())
+        assert translations["entity"]["switch"]["fireplace"]["name"] == "Device power"
+
+
 def test_release_uses_checked_in_version_and_exact_commit(release_steps):
     """Do not derive versions from inherited tags or publish an unvalidated branch tip."""
     assert "Semantic Release" not in release_steps

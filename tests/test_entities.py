@@ -358,6 +358,59 @@ async def test_preserve_climate_off_and_power_off_contracts(hass, client):
     await coordinator.async_shutdown()
 
 
+@pytest.mark.parametrize("mode,flame,expected", [
+    (None, None, None),
+    (0, 0, False), (0, 6, False),
+    (1, 0, True), (1, 3, True), (1, None, True),
+    (2, 0, True), (3, 0, True), (5, 0, True),
+])
+async def test_device_power_reflects_mode_not_heating(hass, mode, flame, expected):
+    """Device power is independent of the climate Off preset and retained flame settings."""
+    client = ProflameClient("aa:bb:cc:dd:ee:ff", "127.0.0.1")
+    state = {}
+    if mode is not None:
+        state["main_mode"] = mode
+    if flame is not None:
+        state["flame_control"] = flame
+    client._handle_json_message(state)
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    power = ProflamePower(coordinator)
+    assert power.is_on is expected
+    assert power.unique_id == "fireplace_aabbccddeeff"
+    assert power.entity_description.translation_key == "fireplace"
+    assert "_attr_name" not in power.__dict__
+    assert client.hvac_action is None
+    assert client._queue.empty()
+    await coordinator.async_shutdown()
+
+
+async def test_device_on_after_climate_off_does_not_restore_flame(hass, client):
+    """A mode-only On remains visibly on after its echo without secretly restoring flame."""
+    client._handle_json_message({"main_mode": 1, "flame_control": 3})
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    climate = ProflameClimate(coordinator)
+    power = ProflamePower(coordinator)
+    await climate.async_turn_off()
+    assert drain(client) == [{"flame_control": 0}, {"main_mode": 1}]
+    client._handle_json_message({"main_mode": 1, "flame_control": 0})
+    assert climate.hvac_mode == HVACMode.OFF
+    assert power.is_on is True
+    await power.async_turn_off()
+    assert drain(client) == [{"main_mode": 0}]
+    client._handle_json_message({"main_mode": 0})
+    assert power.is_on is False
+    await power.async_turn_on()
+    assert drain(client) == [{"main_mode": 1}]
+    assert power.is_on is False
+    client._handle_json_message({"main_mode": 1})
+    assert power.is_on is True
+    assert climate.hvac_mode == HVACMode.OFF
+    assert client.get_state("flame_control") == 0
+    assert client._stored_flame == 3
+    assert client.hvac_action is None
+    await coordinator.async_shutdown()
+
+
 async def test_fan_light_ranges_and_restore(hass, client):
     """Round-trip all six levels, honor explicit speed, and restore observed settings."""
     coordinator = ProflameDataCoordinator(hass, client, "Fireplace")

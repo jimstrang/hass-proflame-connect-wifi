@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PROFLAME_COORDINATOR, Preset
+from .const import DOMAIN, PROFLAME_COORDINATOR
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
@@ -32,13 +32,11 @@ class ProflamePower(ProflameEntity, SwitchEntity):
             key='fireplace',
             translation_key='fireplace',
         ))
-        self._attr_name = None
 
     @property
     def is_on(self) -> bool | None:
-        """Return the current fireplace mode."""
-        preset = self._device.preset
-        return None if preset is None else preset != Preset.OFF
+        """Return reported device power, independently of the heating preset."""
+        return self._device.is_on()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fireplace off."""
