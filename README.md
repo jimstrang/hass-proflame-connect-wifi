@@ -280,8 +280,8 @@ not the original project's tracker.
 
 ## Development and credits
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for offline tests, protocol references,
-staged hardware validation, and HACS release requirements.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, tests, hardware-test
+safety, and release instructions.
 
 Based on work by [Pharrox](https://github.com/Pharrox/hass-proflame-connect-wifi)
 and [jeffrapp](https://github.com/jeffrapp/hass-proflame-connect-wifi), with
