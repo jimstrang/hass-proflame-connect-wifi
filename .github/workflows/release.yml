@@ -16,34 +16,62 @@ jobs:
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4.1.0
+        with:
+          fetch-depth: 0
       - name: Semantic Release
         id: semantic_release
         uses: cycjimmy/semantic-release-action@v4
         with:
           semantic_version: 23.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Make Release Body
+        if: steps.semantic_release.outputs.new_release_published == 'true'
         shell: bash
         env:
           PREV_RELEASE: ${{ steps.semantic_release.outputs.last_release_git_tag }}
           CUR_RELEASE: ${{ steps.semantic_release.outputs.new_release_git_tag }}
         run: |
-          echo 'Changes in this Release' > release-body.txt
-          git log --pretty=format:%s "${PREV_RELEASE}..${CUR_RELEASE}" | sed 's/^/ - /' >> release-body.txt
-      - name: "Adjust version number"
+          echo 'Changes in this release' > "${RUNNER_TEMP}/release-body.txt"
+          if [ -n "${PREV_RELEASE}" ]; then
+            git --no-pager log --pretty=format:%s "${PREV_RELEASE}..${CUR_RELEASE}"
+          else
+            git --no-pager log --pretty=format:%s "${CUR_RELEASE}"
+          fi | sed 's/^/ - /' >> "${RUNNER_TEMP}/release-body.txt"
+      - name: "Package integration"
+        if: steps.semantic_release.outputs.new_release_published == 'true'
         shell: "bash"
+        env:
+          RELEASE_VERSION: ${{ steps.semantic_release.outputs.new_release_version }}
         run: |
-          yq -i -o json '.version="${{ steps.semantic_release.outputs.new_release_version }}"' \
-            "${{ github.workspace }}/custom_components/proflame_connect_wifi/manifest.json"
-      - name: "ZIP the integration directory"
-        shell: "bash"
-        run: |
-          cd "${{ github.workspace }}/custom_components/proflame_connect_wifi"
-          zip proflame_connect_wifi.zip -r ./
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          version = os.environ["RELEASE_VERSION"]
+          if not version:
+              raise ValueError("A release version is required")
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          integration = workspace / "custom_components" / "proflame_connect_wifi"
+          manifest_path = integration / "manifest.json"
+          manifest = json.loads(manifest_path.read_text())
+          manifest["version"] = version
+          manifest_path.write_text(json.dumps(manifest, indent=4) + "\n")
+          archive = Path(os.environ["RUNNER_TEMP"]) / "proflame_connect_wifi.zip"
+          with ZipFile(archive, "w", ZIP_DEFLATED) as package:
+              for path in sorted(integration.rglob("*")):
+                  if path.is_file() and "__pycache__" not in path.parts and path.suffix not in {".pyc", ".zip"}:
+                      package.write(path, path.relative_to(integration))
+              package.write(workspace / "LICENSE", "LICENSE")
+          PY
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        if: steps.semantic_release.outputs.new_release_published == 'true'
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.semantic_release.outputs.new_release_git_tag }}
           name: Release ${{ steps.semantic_release.outputs.new_release_git_tag }}
-          body_path: release-body.txt
-          files: ${{ github.workspace }}/custom_components/proflame_connect_wifi/proflame_connect_wifi.zip
+          body_path: ${{ runner.temp }}/release-body.txt
+          files: ${{ runner.temp }}/proflame_connect_wifi.zip
           draft: false

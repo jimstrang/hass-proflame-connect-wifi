@@ -11,6 +11,9 @@ on:
     branches:
       - "master"
 
+permissions:
+  contents: read
+
 jobs:
   hassfest: # https://developers.home-assistant.io/blog/2020/04/16/hassfest
     name: "Hassfest Validation"
@@ -33,5 +36,5 @@ jobs:
           uses: "hacs/action@main"
           with:
             category: "integration"
-            # Remove this 'ignore' key when you have added brand images for your integration to https://github.com/home-assistant/brands
+            # Remove after adding brand/icon.png; default-catalog submission requires no ignores.
             ignore: "brands"
