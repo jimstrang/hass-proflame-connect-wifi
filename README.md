@@ -151,7 +151,7 @@ hardware capabilities.
 | Number | Configured flame height, levels 0-6; not a flame sensor |
 | Select: Pilot mode | Continuous pilot (CPI) / intermittent pilot (IPI) setting, not a pilot-flame sensor |
 | Switch | Full-device operating-mode on/off |
-| Sensors | Free heap, minimum free heap, and WiFi signal, when reported by the firmware |
+| Sensors (diagnostic, disabled by default) | Free heap, minimum free heap, and WiFi signal, when reported by the firmware |
 
 **Climate Off and the power switch are different controls.** Climate Off
 preserves the inherited behavior of setting flame height to zero and selecting
@@ -237,6 +237,10 @@ for the fireplace. Do not leave new fireplace automations unattended.
   warning and explicitly enable editing only if appropriate.
 - **Sensors are unknown:** some firmware does not report diagnostic fields.
   Missing values are not replaced with invented readings.
+  These optional diagnostic sensors are disabled by default for new entities.
+  Enable them individually in HA if your firmware supplies them. Existing
+  enabled/disabled choices are preserved on upgrade; already enabled unknown
+  sensors can be disabled manually.
 - **Temperature is unchanged:** this may be a retained reading, not a connection
   failure or proof that the room temperature is constant.
 

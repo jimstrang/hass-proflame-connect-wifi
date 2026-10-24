@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from homeassistant.components.climate import ClimateEntityFeature, HVACMode
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import EntityCategory, UnitOfTemperature
 from homeassistant.helpers.entity_platform import EntityPlatform
 
 from custom_components.proflame_connect_wifi.client import ProflameClient
@@ -259,6 +259,27 @@ async def test_entities_identity_availability_and_cleanup(hass, client):
     await coordinator.async_shutdown()
     assert not client._connection_callbacks
     assert client._callbacks == [client._track_state]
+    await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("field,value", [
+    (ApiAttrs.FREE_HEAP, 19060),
+    (ApiAttrs.MIN_FREE_HEAP, 18000),
+    (ApiAttrs.WIFI_SIGNAL_STR, -55),
+])
+async def test_optional_sensors_are_disabled_diagnostics(hass, client, field, value):
+    """Default optional diagnostics off while preserving identity and reported-value handling."""
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    sensor = ProflameSensor(coordinator, field)
+    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
+    assert sensor.entity_registry_enabled_default is False
+    assert sensor.unique_id == f"{field}_aabbccddeeff"
+    assert sensor.native_value is None
+    client._handle_json_message({field: value})
+    assert sensor.native_value == value
+    client._handle_json_message({field: 0})
+    assert sensor.native_value == 0
+    assert client._queue.empty()
     await coordinator.async_shutdown()
 
 
