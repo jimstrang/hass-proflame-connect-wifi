@@ -312,21 +312,30 @@ an archive.
 
 ### Release gate
 
-Pushing `master` runs validation but does not publish a release. Publication
-requires manually running **Release** on `master` with **confirm_publish**
-checked. Both HA/Python test pairs and HACS/Hassfest validation must pass in that
+Ordinary pushes run validation but do not publish a release. Feature/fix PRs
+should leave the manifest version unchanged. Prepare a separate release PR
+updating the manifest version and related release notes. Merging that PR to
+`master` triggers publication only when the version value differs from the
+previous `master` commit. Other manifest edits do not publish. This is a
+version-change trigger on `master`, not a PR-label trigger: do not bypass release
+review by pushing a version bump directly.
+
+Both HA/Python test pairs and HACS/Hassfest validation must pass in that release
 run before the publishing job starts. HACS checks the triggering commit SHA,
-not a prior release. There are no ignored HACS checks.
+not a prior release. There are no ignored HACS checks. A manually confirmed
+**Release** dispatch on `master` remains available for recovering an interrupted
+release, subject to the same validation and existing-tag protections.
 
 Versions are explicit SemVer in the checked-in integration manifest, without a
-`v` prefix or build metadata. The prepared evaluation version is `1.1.0-beta.2`.
+`v` prefix or build metadata, such as `1.1.0-beta.2`.
 The workflow checks out the exact validated commit, reads that version, verifies
-the ZIP manifest matches, and creates tag `v1.1.0-beta.2` and its GitHub release
+the ZIP manifest matches, and creates the matching `v`-prefixed tag and GitHub release
 at that commit. Versions with a prerelease suffix are marked as GitHub
 prereleases; HACS users may need to enable beta versions to select them.
 
-To prepare another release, bump the manifest in a reviewed commit on `master`,
-push it, and validate it before manually publishing. A tag that already exists
+To prepare another release, bump the manifest in a separate reviewed release PR
+and merge it after checks pass. The merge is approval to publish, contingent on
+the release-run validation. A tag that already exists
 is an error, not permission to overwrite a release. Keep inherited tags
 unchanged; do not backfill old releases that lack current safeguards or build a
 historical tag with files from current `master`.

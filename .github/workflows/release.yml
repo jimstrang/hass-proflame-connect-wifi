@@ -1,6 +1,10 @@
 name: Release
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - custom_components/proflame_connect_wifi/manifest.json
   workflow_dispatch:
     inputs:
       confirm_publish:
@@ -17,16 +21,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Detect release version change
+    runs-on: "ubuntu-latest"
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Determine publication intent
+        id: gate
+        shell: python
+        env:
+          CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          publish = False
+          if os.environ["GITHUB_REF"] == "refs/heads/master":
+              event = os.environ["GITHUB_EVENT_NAME"]
+              if event == "workflow_dispatch":
+                  publish = os.environ.get("CONFIRM_PUBLISH") == "true"
+              elif event == "push":
+                  before = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())["before"]
+                  if re.fullmatch(r"[0-9a-f]{40}", before) is None or before == "0" * 40:
+                      raise ValueError("A valid previous master commit is required")
+                  manifest = "custom_components/proflame_connect_wifi/manifest.json"
+                  previous = json.loads(subprocess.check_output(
+                      ["git", "show", f"{before}:{manifest}"], text=True,
+                  ))["version"]
+                  current = json.loads(Path(manifest).read_text())["version"]
+                  publish = current != previous
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"publish={'true' if publish else 'false'}\n")
   tests:
     name: Offline runtime checks
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     uses: ./.github/workflows/lint.yml
   validation:
     name: HACS and Hassfest
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     uses: ./.github/workflows/validate.yaml
   release:
     name: Release
-    needs: [tests, validation]
-    if: github.ref == 'refs/heads/master' && inputs.confirm_publish
+    needs: [prepare, tests, validation]
+    if: github.ref == 'refs/heads/master' && needs.prepare.outputs.publish == 'true'
     runs-on: "ubuntu-latest"
     permissions:
       contents: write

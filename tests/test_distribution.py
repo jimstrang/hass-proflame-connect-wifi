@@ -91,20 +91,69 @@ def test_release_uses_checked_in_version_and_exact_commit(release_steps):
     assert "Read-only" in release["body"]
 
 
-def test_release_requires_explicit_manual_confirmation_and_validation():
-    """Never publish on push or before the exact-commit validation jobs succeed."""
+def test_release_requires_version_change_or_manual_confirmation_and_validation():
+    """Publish only an intentional release after exact-commit validation succeeds."""
     workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
     triggers = workflow.get("on", workflow.get(True))
-    assert set(triggers) == {"workflow_dispatch"}
+    assert set(triggers) == {"push", "workflow_dispatch"}
+    assert triggers["push"]["branches"] == ["master"]
+    assert triggers["push"]["paths"] == ["custom_components/proflame_connect_wifi/manifest.json"]
     confirmation = triggers["workflow_dispatch"]["inputs"]["confirm_publish"]
     assert confirmation["type"] == "boolean"
     assert confirmation["default"] is False
     assert confirmation["required"] is True
     jobs = workflow["jobs"]
-    assert set(jobs["release"]["needs"]) == {"tests", "validation"}
-    assert jobs["release"]["if"] == "github.ref == 'refs/heads/master' && inputs.confirm_publish"
+    assert set(jobs["release"]["needs"]) == {"prepare", "tests", "validation"}
+    assert jobs["release"]["if"] == "github.ref == 'refs/heads/master' && needs.prepare.outputs.publish == 'true'"
     assert jobs["tests"]["uses"] == "./.github/workflows/lint.yml"
     assert jobs["validation"]["uses"] == "./.github/workflows/validate.yaml"
+    for name in ("tests", "validation"):
+        assert jobs[name]["needs"] == "prepare"
+        assert jobs[name]["if"] == "needs.prepare.outputs.publish == 'true'"
+
+
+@pytest.mark.parametrize("event,ref,confirm,changed,expected", [
+    ("push", "refs/heads/master", "", False, False),
+    ("push", "refs/heads/master", "", True, True),
+    ("push", "refs/heads/feature", "", True, False),
+    ("pull_request", "refs/heads/master", "", True, False),
+    ("workflow_dispatch", "refs/heads/master", "false", True, False),
+    ("workflow_dispatch", "refs/heads/master", "true", False, True),
+    ("workflow_dispatch", "refs/heads/feature", "true", True, False),
+])
+def test_publication_intent_gate(tmp_path, event, ref, confirm, changed, expected):
+    """Test real version detection: metadata-only edits and unmerged PRs never publish."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+    manifest = tmp_path / "custom_components" / DOMAIN / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"version": "1.1.0-beta.2", "name": "Old metadata"}))
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "-q", "-m", "baseline"],
+        cwd=tmp_path, check=True, capture_output=True,
+    )
+    previous = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
+    manifest.write_text(json.dumps({
+        "version": "1.1.0-beta.3" if changed else "1.1.0-beta.2", "name": "Updated metadata",
+    }))
+    event_file = tmp_path / "event.json"
+    event_file.write_text(json.dumps({"before": previous}))
+    output = tmp_path / "outputs"
+    workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+    script = next(
+        step["run"] for step in workflow["jobs"]["prepare"]["steps"] if step.get("id") == "gate"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path, env={
+            **os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_REF": ref,
+            "CONFIRM_PUBLISH": confirm, "GITHUB_EVENT_PATH": str(event_file),
+            "GITHUB_OUTPUT": str(output),
+        },
+        check=True, capture_output=True, text=True,
+    )
+    assert output.read_text() == f"publish={'true' if expected else 'false'}\n"
 
 
 def test_validation_is_reusable_and_hacs_checks_exact_commit():
