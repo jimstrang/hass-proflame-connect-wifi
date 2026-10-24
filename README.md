@@ -1,5 +1,7 @@
 # Proflame Connect WiFi for Home Assistant
 
+[![Proflame by SIT](https://raw.githubusercontent.com/home-assistant/brands/master/custom_integrations/proflame_connect_wifi/logo.png)](https://github.com/home-assistant/brands/tree/master/custom_integrations/proflame_connect_wifi)
+
 A community-maintained custom integration for fireplaces with a SIT Proflame
 WiFi dongle. It connects directly over your local network, without a cloud
 account, and is intended for installation through [HACS](https://www.hacs.xyz/).
@@ -239,3 +241,9 @@ and [jeffrapp](https://github.com/jeffrapp/hass-proflame-connect-wifi), with
 selective fixes informed by
 [jameskorzekwa](https://github.com/jameskorzekwa/hass-proflame-connect-wifi).
 Distributed under the [MIT license](LICENSE).
+
+The linked product logo comes from the Home Assistant brands repository.
+Proflame and SIT names and marks
+belong to their respective owners; they are not licensed under this repository's
+MIT license. Their use identifies the supported product and does not imply
+manufacturer endorsement.

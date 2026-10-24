@@ -1,6 +1,7 @@
 name: "Validate"
 
 on:
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron:  "0 0 * * *"
@@ -36,5 +37,5 @@ jobs:
           uses: "hacs/action@main"
           with:
             category: "integration"
-            # Remove after adding brand/icon.png; default-catalog submission requires no ignores.
-            ignore: "brands"
+          env:
+            REPOSITORY_REF: ${{ github.event.pull_request.head.sha || github.sha }}

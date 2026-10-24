@@ -1,15 +1,32 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - master
+  workflow_dispatch:
+    inputs:
+      confirm_publish:
+        description: "Publish a release after validation (master only)"
+        type: boolean
+        required: true
+        default: false
 
-permissions: {}
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
+  tests:
+    name: Offline runtime checks
+    uses: ./.github/workflows/lint.yml
+  validation:
+    name: HACS and Hassfest
+    uses: ./.github/workflows/validate.yaml
   release:
     name: Release
+    needs: [tests, validation]
+    if: github.ref == 'refs/heads/master' && inputs.confirm_publish
     runs-on: "ubuntu-latest"
     permissions:
       contents: write

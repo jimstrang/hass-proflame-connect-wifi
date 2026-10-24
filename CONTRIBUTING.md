@@ -302,14 +302,34 @@ The default branch is hidden from HACS downloads; a Git tag alone is not a
 downloadable release. Non-release commits must not produce an empty version or
 an archive.
 
+### Release gate
+
+Pushing `master` runs validation but does not publish a release. Publication
+requires manually running **Release** on `master` with **confirm_publish**
+checked. Both HA/Python test pairs and HACS/Hassfest validation must pass in that
+run before the publishing job starts. HACS checks the triggering commit SHA,
+not a prior release. There are no ignored HACS checks.
+
+The workflow derives the next version from conventional commits. A manual run
+without a releasable change does not create an archive or release. Publication
+is separate from approval to push preparation changes. Do not manually dispatch
+Release just to test CI.
+
+Branding already exists for this integration domain in the
+[Home Assistant brands repository](https://github.com/home-assistant/brands/tree/master/custom_integrations/proflame_connect_wifi).
+HACS supports that fallback when local brand assets are absent. Keep the
+domain stable. The README references the same registered product branding;
+third-party marks are not part of the MIT code license. Do not copy arbitrary
+app-store images or introduce manufacturer endorsement claims.
+
 ### Before the first public release
 
-- Enable GitHub Issues for this fork and add relevant repository topics, such
-  as `hacs`, `home-assistant`, and `proflame`. The manifest must point to this
-  fork's documentation and issue tracker.
-- Add original or appropriately licensed branding, at least
-  `custom_components/proflame_connect_wifi/brand/icon.png`, following
-  [Home Assistant's brand guidance](https://developers.home-assistant.io/docs/creating_integration_file_structure/#brand-images-in-custom-integrations).
+- Confirm GitHub Issues remain enabled and relevant repository topics are set.
+  The manifest must point to this fork's documentation and issue tracker.
+- Confirm the existing registered brand fallback passes HACS validation. If
+  adding local assets later, follow
+  [Home Assistant's brand guidance](https://contributors.home-assistant.io/core/integrations/brands/)
+  and establish appropriate rights.
 - Run both offline runtime pairs, distribution tests, HACS validation, and
   Hassfest. Resolve findings; do not present an ignored check as a pass.
 - Complete the staged hardware validation, or clearly label an evaluation
@@ -318,9 +338,7 @@ an archive.
   manifest version, license, installation, upgrade, and unload behavior in an
   approved test HA instance before recommending it to users.
 
-The current brand-check ignore is temporary and is not sufficient for default
-catalog inclusion. GitHub repository settings and publication are separate from
-local file changes.
+GitHub repository settings and publication are separate from local file changes.
 
 ### Default HACS catalog
 

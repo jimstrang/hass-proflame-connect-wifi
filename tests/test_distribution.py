@@ -68,6 +68,36 @@ def test_non_release_steps_are_guarded(release_steps):
         assert release_steps[name]["if"] == guard
 
 
+def test_release_requires_explicit_manual_confirmation_and_validation():
+    """Never publish on push or before the exact-commit validation jobs succeed."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert set(triggers) == {"workflow_dispatch"}
+    confirmation = triggers["workflow_dispatch"]["inputs"]["confirm_publish"]
+    assert confirmation["type"] == "boolean"
+    assert confirmation["default"] is False
+    assert confirmation["required"] is True
+    jobs = workflow["jobs"]
+    assert set(jobs["release"]["needs"]) == {"tests", "validation"}
+    assert jobs["release"]["if"] == "github.ref == 'refs/heads/master' && inputs.confirm_publish"
+    assert jobs["tests"]["uses"] == "./.github/workflows/lint.yml"
+    assert jobs["validation"]["uses"] == "./.github/workflows/validate.yaml"
+
+
+def test_validation_is_reusable_and_hacs_checks_exact_commit():
+    """Reuse normal CI without ignored branding or accidentally checking a prior release."""
+    for filename in ("lint.yml", "validate.yaml"):
+        workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
+        assert "workflow_call" in workflow.get("on", workflow.get(True))
+    workflow = yaml.safe_load((ROOT / ".github/workflows/validate.yaml").read_text())
+    action = next(
+        step for step in workflow["jobs"]["hacs"]["steps"]
+        if step.get("uses") == "hacs/action@main"
+    )
+    assert "ignore" not in action["with"]
+    assert action["env"]["REPOSITORY_REF"] == "${{ github.event.pull_request.head.sha || github.sha }}"
+
+
 @pytest.fixture
 def package_environment(tmp_path):
     """Copy only the release inputs into an isolated workspace."""
