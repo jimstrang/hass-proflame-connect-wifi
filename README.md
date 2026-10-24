@@ -144,7 +144,7 @@ hardware capabilities.
 | Fan | Configured fan speed, levels 0-6, presented as a percentage |
 | Light | Configured lamp brightness, levels 0-6, presented as HA brightness |
 | Number | Configured flame height, levels 0-6; not a flame sensor |
-| Select | Continuous/intermittent pilot setting |
+| Select: Pilot mode | Continuous pilot (CPI) / intermittent pilot (IPI) setting, not a pilot-flame sensor |
 | Switch | Full-device operating-mode on/off |
 | Sensors | Free heap, minimum free heap, and WiFi signal, when reported by the firmware |
 

@@ -62,6 +62,11 @@
         "name": "Flame height"
       }
     },
+    "select": {
+      "pilot": {
+        "name": "Pilot mode"
+      }
+    },
     "sensor": {
       "free_heap": {
         "name": "Free heap"
