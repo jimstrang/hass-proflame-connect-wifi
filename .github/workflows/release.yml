@@ -34,32 +34,41 @@ jobs:
       - name: Checkout the repository
         uses: actions/checkout@v4.1.0
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Semantic Release
-        id: semantic_release
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          semantic_version: 23.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Make Release Body
-        if: steps.semantic_release.outputs.new_release_published == 'true'
-        shell: bash
-        env:
-          PREV_RELEASE: ${{ steps.semantic_release.outputs.last_release_git_tag }}
-          CUR_RELEASE: ${{ steps.semantic_release.outputs.new_release_git_tag }}
+      - name: Read release version
+        id: version
+        shell: python
         run: |
-          echo 'Changes in this release' > "${RUNNER_TEMP}/release-body.txt"
-          if [ -n "${PREV_RELEASE}" ]; then
-            git --no-pager log --pretty=format:%s "${PREV_RELEASE}..${CUR_RELEASE}"
-          else
-            git --no-pager log --pretty=format:%s "${CUR_RELEASE}"
-          fi | sed 's/^/ - /' >> "${RUNNER_TEMP}/release-body.txt"
+          import json
+          import os
+          from pathlib import Path
+          import re
+
+          manifest = Path("custom_components/proflame_connect_wifi/manifest.json")
+          version = json.loads(manifest.read_text())["version"]
+          numeric = r"(?:0|[1-9][0-9]*)"
+          identifier = rf"(?:{numeric}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+          pattern = rf"{numeric}\.{numeric}\.{numeric}(?:-{identifier}(?:\.{identifier})*)?"
+          if not isinstance(version, str) or re.fullmatch(pattern, version) is None:
+              raise ValueError("Manifest version must be SemVer without a v prefix or build metadata")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"version={version}\n")
+              output.write(f"tag=v{version}\n")
+              output.write(f"prerelease={'true' if '-' in version else 'false'}\n")
+      - name: Refuse existing tag
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            echo "Tag ${RELEASE_TAG} already exists; bump the manifest version instead."
+            exit 1
+          fi
       - name: "Package integration"
-        if: steps.semantic_release.outputs.new_release_published == 'true'
         shell: "bash"
         env:
-          RELEASE_VERSION: ${{ steps.semantic_release.outputs.new_release_version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           python3 - <<'PY'
           import json
@@ -74,8 +83,8 @@ jobs:
           integration = workspace / "custom_components" / "proflame_connect_wifi"
           manifest_path = integration / "manifest.json"
           manifest = json.loads(manifest_path.read_text())
-          manifest["version"] = version
-          manifest_path.write_text(json.dumps(manifest, indent=4) + "\n")
+          if manifest["version"] != version:
+              raise ValueError("Archive version must match the checked-in manifest version")
           archive = Path(os.environ["RUNNER_TEMP"]) / "proflame_connect_wifi.zip"
           with ZipFile(archive, "w", ZIP_DEFLATED) as package:
               for path in sorted(integration.rglob("*")):
@@ -84,11 +93,19 @@ jobs:
               package.write(workspace / "LICENSE", "LICENSE")
           PY
       - name: Create Release
-        if: steps.semantic_release.outputs.new_release_published == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.semantic_release.outputs.new_release_git_tag }}
-          name: Release ${{ steps.semantic_release.outputs.new_release_git_tag }}
-          body_path: ${{ runner.temp }}/release-body.txt
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Proflame Connect WiFi ${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            Read-only mode is enabled by default, including for existing entries without an explicit access setting. Setting actions fail with a read-only error until editing is explicitly enabled through Reconfigure.
+
+            Editable mode does not override RF-initiated operation. Attended tests found that Wi-Fi Off and the official app's Off could echo Off while the main burner continued burning. Do not rely on timer or presence automations to extinguish an RF-started fireplace.
+
+            Review the README's experimental status and validation limits before installing. This release does not claim safety-rated shutdown or confirmed burner telemetry.
           files: ${{ runner.temp }}/proflame_connect_wifi.zip
+          fail_on_unmatched_files: true
           draft: false

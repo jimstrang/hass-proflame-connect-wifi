@@ -310,10 +310,21 @@ checked. Both HA/Python test pairs and HACS/Hassfest validation must pass in tha
 run before the publishing job starts. HACS checks the triggering commit SHA,
 not a prior release. There are no ignored HACS checks.
 
-The workflow derives the next version from conventional commits. A manual run
-without a releasable change does not create an archive or release. Publication
-is separate from approval to push preparation changes. Do not manually dispatch
-Release just to test CI.
+Versions are explicit SemVer in the checked-in integration manifest, without a
+`v` prefix or build metadata. The prepared evaluation version is `1.1.0-beta.1`.
+The workflow checks out the exact validated commit, reads that version, verifies
+the ZIP manifest matches, and creates tag `v1.1.0-beta.1` and its GitHub release
+at that commit. Versions with a prerelease suffix are marked as GitHub
+prereleases; HACS users may need to enable beta versions to select them.
+
+To prepare another release, bump the manifest in a reviewed commit on `master`,
+push it, and validate it before manually publishing. A tag that already exists
+is an error, not permission to overwrite a release. Keep inherited tags
+unchanged; do not backfill old releases that lack current safeguards or build a
+historical tag with files from current `master`.
+
+Publication is separate from approval to push preparation changes. Do not
+manually dispatch Release just to test CI; use Lint and Validate instead.
 
 Branding already exists for this integration domain in the
 [Home Assistant brands repository](https://github.com/home-assistant/brands/tree/master/custom_integrations/proflame_connect_wifi).

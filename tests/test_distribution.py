@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 from zipfile import ZipFile
 
 import pytest
@@ -61,11 +62,17 @@ def test_public_readme_has_no_installation_specific_addresses():
     assert "/home/" not in readme
 
 
-def test_non_release_steps_are_guarded(release_steps):
-    """A non-release commit must not write a version, archive, or GitHub release."""
-    guard = "steps.semantic_release.outputs.new_release_published == 'true'"
-    for name in ("Make Release Body", "Package integration", "Create Release"):
-        assert release_steps[name]["if"] == guard
+def test_release_uses_checked_in_version_and_exact_commit(release_steps):
+    """Do not derive versions from inherited tags or publish an unvalidated branch tip."""
+    assert "Semantic Release" not in release_steps
+    assert release_steps["Checkout the repository"]["with"]["ref"] == "${{ github.sha }}"
+    release = release_steps["Create Release"]["with"]
+    assert release["tag_name"] == "${{ steps.version.outputs.tag }}"
+    assert release["target_commitish"] == "${{ github.sha }}"
+    assert release["prerelease"] == "${{ steps.version.outputs.prerelease == 'true' }}"
+    assert release["generate_release_notes"] is True
+    assert "RF-initiated" in release["body"]
+    assert "Read-only" in release["body"]
 
 
 def test_release_requires_explicit_manual_confirmation_and_validation():
@@ -110,6 +117,10 @@ def package_environment(tmp_path):
     (integration / "__pycache__").mkdir()
     (integration / "__pycache__/ignored.pyc").write_bytes(b"not a runtime file")
     (integration / "previous.zip").write_bytes(b"not part of the release")
+    manifest_path = integration / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["version"] = "9.8.7"
+    manifest_path.write_text(json.dumps(manifest))
     runner_temp = tmp_path / "runner"
     runner_temp.mkdir()
     return {
@@ -157,16 +168,76 @@ def test_empty_release_version_fails(release_steps, package_environment):
     assert not list(Path(package_environment["RUNNER_TEMP"]).glob("*.zip"))
 
 
-def test_first_release_notes_need_no_previous_tag(release_steps, tmp_path):
-    """Build first-release notes using read-only git history and no previous tag."""
+@pytest.mark.parametrize("version,prerelease", [
+    ("1.1.0-beta.1", True), ("1.1.0", False), ("1.0.5-beta.1", True),
+])
+def test_version_outputs_match_manifest(release_steps, package_environment, version, prerelease):
+    """Exercise the actual release-version script for stable and beta versions."""
+    workspace = Path(package_environment["GITHUB_WORKSPACE"])
+    manifest_path = workspace / "custom_components" / DOMAIN / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["version"] = version
+    manifest_path.write_text(json.dumps(manifest))
+    output = workspace / "outputs"
     subprocess.run(
-        ["bash", "-e", "-o", "pipefail", "-c", release_steps["Make Release Body"]["run"]],
-        cwd=ROOT, env={
-            **os.environ, "RUNNER_TEMP": str(tmp_path),
-            "PREV_RELEASE": "", "CUR_RELEASE": "HEAD",
-        },
+        [sys.executable, "-c", release_steps["Read release version"]["run"]],
+        cwd=workspace, env={**package_environment, "GITHUB_OUTPUT": str(output)},
         check=True, capture_output=True, text=True,
     )
-    body = (tmp_path / "release-body.txt").read_text()
-    assert body.startswith("Changes in this release\n")
-    assert "\n - " in body
+    assert output.read_text().splitlines() == [
+        f"version={version}", f"tag=v{version}",
+        f"prerelease={'true' if prerelease else 'false'}",
+    ]
+
+
+@pytest.mark.parametrize("version", [
+    "", "1.05-beta.1", "v1.1.0", "1.1.0-beta.01", "1.1.0+build", "../unsafe", None,
+])
+def test_invalid_version_cannot_create_release_outputs(release_steps, package_environment, version):
+    """Reject malformed release identifiers before tagging or packaging."""
+    workspace = Path(package_environment["GITHUB_WORKSPACE"])
+    manifest_path = workspace / "custom_components" / DOMAIN / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["version"] = version
+    manifest_path.write_text(json.dumps(manifest))
+    output = workspace / "outputs"
+    result = subprocess.run(
+        [sys.executable, "-c", release_steps["Read release version"]["run"]],
+        cwd=workspace, env={**package_environment, "GITHUB_OUTPUT": str(output)},
+        check=False, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Manifest version must be SemVer" in result.stderr
+    assert not output.exists()
+
+
+def test_mismatched_archive_version_fails(release_steps, package_environment):
+    """Never rewrite the source manifest to conceal a mismatched release version."""
+    package_environment["RELEASE_VERSION"] = "1.2.3"
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", release_steps["Package integration"]["run"]],
+        env=package_environment, check=False, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "must match the checked-in manifest" in result.stderr
+    assert not list(Path(package_environment["RUNNER_TEMP"]).glob("*.zip"))
+
+
+@pytest.mark.parametrize("tag,exists", [("v1.0.4", True), ("v99.99.99-test-only", False)])
+def test_existing_tags_are_never_overwritten(release_steps, tmp_path, tag, exists):
+    """Exercise duplicate-tag refusal in a disposable repo, leaving project tags untouched."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "-q", "--allow-empty", "-m", "test"],
+        cwd=tmp_path, check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "tag", "v1.0.4"], cwd=tmp_path, check=True, capture_output=True,
+    )
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", release_steps["Refuse existing tag"]["run"]],
+        cwd=tmp_path, env={**os.environ, "RELEASE_TAG": tag},
+        check=False, capture_output=True, text=True,
+    )
+    assert (result.returncode != 0) is exists
