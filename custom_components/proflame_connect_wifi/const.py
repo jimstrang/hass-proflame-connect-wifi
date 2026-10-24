@@ -66,6 +66,24 @@ DOMAIN = "proflame_connect_wifi"
 DEFAULT_DEVICE = 'Proflame Fireplace'
 DEFAULT_NAME = 'Fireplace'
 DEFAULT_PORT = 88
+INITIAL_STATE_TIMEOUT = 10
+
+# Validate known numeric fields independently; unknown diagnostics aren't controls.
+STATE_RANGES = {
+    ApiAttrs.OPERATING_MODE: (0, 5),
+    ApiAttrs.TEMPERATURE_UNIT: (0, 1),
+    ApiAttrs.PILOT_MODE: (0, 1),
+    ApiAttrs.FAN_SPEED: (0, 6),
+    ApiAttrs.FLAME_HEIGHT: (0, 6),
+    ApiAttrs.LIGHT_BRIGHTNESS: (0, 6),
+    ApiAttrs.AUXILIARY: (0, 1),
+    ApiAttrs.SPLIT_FLOW: (0, 1),
+    ApiAttrs.CURRENT_TEMPERATURE: (-1000, 3000),
+    ApiAttrs.TARGET_TEMPERATURE: (0, 1000),
+    ApiAttrs.FREE_HEAP: (0, 2**32 - 1),
+    ApiAttrs.MIN_FREE_HEAP: (0, 2**32 - 1),
+    ApiAttrs.WIFI_SIGNAL_STR: (-127, 0),
+}
 
 # Seconds between pings, and seconds of silence before the connection is dropped
 KEEPALIVE_INTERVAL = 5

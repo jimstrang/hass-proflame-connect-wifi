@@ -58,11 +58,10 @@ class ProflameFan(ProflameEntity, FanEntity):
     @property
     def percentage(self) -> int | None:
         """Return the current speed percentage."""
-        if self.fan_speed:
-            return math.floor(self.fan_speed * (100 / MAX_FAN_SPEED))
-        return 0
+        speed = self.fan_speed
+        return None if speed is None else math.floor(speed * (100 / MAX_FAN_SPEED))
 
-    def set_percentage(self, percentage: int) -> None:
+    async def async_set_percentage(self, percentage: int) -> None:
         """Set the speed of the fireplace fan."""
         speed = math.ceil(percentage / (100 / MAX_FAN_SPEED))
         self._device.set_fan_speed(speed)
@@ -74,7 +73,10 @@ class ProflameFan(ProflameEntity, FanEntity):
         **kwargs: Any,
     ) -> None:
         """Turn the fan on."""
-        self._device.turn_on_fan()
+        if percentage is None:
+            self._device.turn_on_fan()
+        else:
+            await self.async_set_percentage(percentage)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fan off."""

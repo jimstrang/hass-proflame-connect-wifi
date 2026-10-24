@@ -37,3 +37,6 @@ jobs:
 
         - name: "Run"
           run: python3 -m ruff check .
+
+        - name: "Offline tests"
+          run: python3 -m pytest -q

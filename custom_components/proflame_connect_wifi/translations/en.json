@@ -4,7 +4,12 @@
       "already_configured": "Device is already configured",
       "already_in_progress": "Configuration flow is already in progress",
       "cannot_connect": "Failed to connect",
-      "no_devices_found": "No devices found on the network"
+      "no_devices_found": "No devices found on the network",
+      "not_proflame_device": "The device did not provide an acknowledged Proflame state.",
+      "reconfigure_successful": "The connection settings were updated."
+    },
+    "error": {
+      "cannot_connect": "Could not connect and receive a Proflame state snapshot."
     },
     "flow_title": "{device}",
     "step": {
@@ -21,7 +26,17 @@
           "port": "Port",
           "unique_id": "Unique ID"
         },
-        "description": "Enter the details of your fireplace."
+        "description": "Enter the details of your fireplace.",
+        "data_description": {
+          "unique_id": "Use the dongle's lowercase MAC address (aa:bb:cc:dd:ee:ff), not its IP address. Keep this identity when changing networks."
+        }
+      },
+      "reconfigure": {
+        "description": "Change the host or port without changing the device identity.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
       }
     }
   },

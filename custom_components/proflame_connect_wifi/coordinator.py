@@ -2,6 +2,7 @@
 import logging
 import re
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -15,17 +16,23 @@ _LOGGER = logging.getLogger(__name__)
 class ProflameDataCoordinator(DataUpdateCoordinator):
     """Base class for device coordinators."""
 
-    def __init__(self, hass: HomeAssistant, client: ProflameClient, name: str) -> None:
+    def __init__(
+        self, hass: HomeAssistant, client: ProflameClient, name: str,
+        entry: ConfigEntry | None = None,
+    ) -> None:
         """Initialize the Proflam coordinator class."""
         super().__init__(
             hass=hass,
             name='devices',
             logger=_LOGGER,
+            config_entry=entry,
         )
         self.client = client
         self.async_set_updated_data(self.client.full_state)
-        self.client.register_callback(self.handle_state_change)
-        self.client.register_connection_callback(self.handle_connection_change)
+        self._unsubscribers = [
+            self.client.register_callback(self.handle_state_change),
+            self.client.register_connection_callback(self.handle_connection_change),
+        ]
         self.device_name = name
         self.unique_id = re.sub('[^A-Za-z0-9]+', '', client.device_id)
         self.device_info = DeviceInfo(
@@ -35,15 +42,19 @@ class ProflameDataCoordinator(DataUpdateCoordinator):
             name=self.device_name
         )
 
+    async def async_shutdown(self) -> None:
+        """Release the push subscriptions and connection."""
+        await self.client.close()
+        while self._unsubscribers:
+            self._unsubscribers.pop()()
+        await super().async_shutdown()
+
     def handle_connection_change(self, connected: bool) -> None:
         """Refresh entities so their availability reflects the connection."""
         self.async_update_listeners()
 
     def handle_state_change(self, key: str, value: int) -> None:
         """Pass new data to the underlying coordinator."""
-        self.async_set_updated_data(
-            data={
-                **self.data,
-                key: value,
-            }
-        )
+        state = self.client.full_state
+        if state != self.data:
+            self.async_set_updated_data(state)

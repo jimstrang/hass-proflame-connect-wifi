@@ -21,7 +21,9 @@ from .util import Temperature, constrain
 class ProflameClient(ProflameClientBase):
     """Client used for interacting with Proflame fireplaces."""
 
-    def __init__(self, device_id, host, port=None, logger=None) -> None:
+    def __init__(
+        self, device_id, host, port=None, logger=None,
+    ) -> None:
         """Create new class instance."""
         super().__init__(device_id, host, port, logger)
         self._stored_fan_speed = MAX_FAN_SPEED
@@ -49,42 +51,50 @@ class ProflameClient(ProflameClientBase):
     def current_temperature(self) -> float | None:
         """Get the current temperature reported by the unit."""
         temperature = self.get_state(ApiAttrs.CURRENT_TEMPERATURE)
-        if temperature:
+        if temperature is not None and self.temperature_unit is not None:
             return temperature / 10
         return None
 
     @property
-    def fan_speed(self) -> int:
+    def fan_speed(self) -> int | None:
         """Get the current state of the fan."""
-        if self.operating_mode in [None, OperatingMode.OFF]:
+        if self.operating_mode is None:
+            return None
+        if self.operating_mode == OperatingMode.OFF:
             return 0
         return self.get_state(ApiAttrs.FAN_SPEED)
 
     @property
     def flame_height(self) -> int | None:
         """Get the configured height of the flame."""
-        if self.operating_mode in [None, 0]:
+        if self.operating_mode is None:
+            return None
+        if self.operating_mode == OperatingMode.OFF:
             return 0
         return self.get_state(ApiAttrs.FLAME_HEIGHT)
 
     @property
     def hvac_action(self) -> HVACAction | None:
         """Get the current HVAC heating status."""
-        if self.preset == Preset.OFF:
-            return HVACAction.OFF
-        return HVACAction.HEATING
+        # Settings and presets do not confirm burner operation.
+        return None
 
     @property
     def hvac_mode(self) -> HVACMode | None:
         """Get the current HVAC heating status."""
-        if self.preset == Preset.OFF:
+        preset = self.preset
+        if preset is None:
+            return None
+        if preset == Preset.OFF:
             return HVACMode.OFF
         return HVACMode.HEAT
 
     @property
     def light_brightness(self) -> int | None:
         """Get the current state of the primary light."""
-        if self.operating_mode in [None, OperatingMode.OFF]:
+        if self.operating_mode is None:
+            return None
+        if self.operating_mode == OperatingMode.OFF:
             return 0
         return self.get_state(ApiAttrs.LIGHT_BRIGHTNESS)
 
@@ -106,7 +116,7 @@ class ProflameClient(ProflameClientBase):
             return Preset.OFF
         if cur_mode == OperatingMode.MANUAL and self.flame_height == 0:
             return Preset.OFF
-        if cur_mode == OperatingMode.MANUAL:
+        if cur_mode == OperatingMode.MANUAL and self.flame_height is not None:
             return Preset.MANUAL
         if cur_mode == OperatingMode.THERMOSTAT:
             return Preset.THERMOSTAT
@@ -119,21 +129,26 @@ class ProflameClient(ProflameClientBase):
         temperature = self.get_state(ApiAttrs.TARGET_TEMPERATURE)
         if self.preset in [Preset.MANUAL, Preset.OFF]:
             return None
-        if temperature:
+        if temperature is not None and self.temperature_unit is not None:
             return temperature / 10
         return None
 
     @property
-    def temperature_unit(self) -> UnitOfTemperature:
+    def temperature_unit(self) -> UnitOfTemperature | None:
         """The temperature unit the device is configured for."""
-        unit = self.get_state(ApiAttrs.TEMPERATURE_UNIT) or 0
+        unit = self.get_state(ApiAttrs.TEMPERATURE_UNIT)
         if unit == 0:
             return UnitOfTemperature.CELSIUS
-        return UnitOfTemperature.FAHRENHEIT
+        if unit == 1:
+            return UnitOfTemperature.FAHRENHEIT
+        return None
 
     def heat(self) -> None:
         """Set the fireplace to the last heat generating configuration."""
-        if self.preset != Preset.OFF:
+        preset = self.preset
+        if preset is None:
+            raise ValueError("Cannot restore heat without a known operating preset")
+        if preset != Preset.OFF:
             return
         self.set_operating_mode(self._stored_mode)
         self.set_flame_height(self._stored_flame)
@@ -185,6 +200,8 @@ class ProflameClient(ProflameClientBase):
 
     def set_target_temperature(self, temperature: Temperature) -> None:
         """Set the desired temperature for themostat based modes."""
+        if self.temperature_unit is None:
+            raise ValueError("Cannot set temperature without a reported device unit")
         if self.temperature_unit == UnitOfTemperature.CELSIUS:
             self.set_state(ApiAttrs.TARGET_TEMPERATURE, int(temperature.to_celcius() * 10))
         if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:

@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry, ConfigType
-from homeassistant.const import CONF_HOST, CONF_PORT, Platform
+from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .client import ProflameClient
 from .const import DOMAIN, PROFLAME_CLIENT, PROFLAME_COORDINATOR
@@ -32,25 +33,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host=entry.data[CONF_HOST],
         port=entry.data[CONF_PORT],
     )
-    await client.open()
-    # Wait for initial state to detect device protocol (indexed vs simple format)
-    await client.wait_for_state()
+    coordinator = None
+    try:
+        await client.open()
+        if not await client.wait_for_state():
+            raise ConfigEntryNotReady("No acknowledged initial Proflame state")
 
-    coordinator = ProflameDataCoordinator(hass, client, entry.title)
+        coordinator = ProflameDataCoordinator(hass, client, entry.title, entry)
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+            PROFLAME_CLIENT: client,
+            PROFLAME_COORDINATOR: coordinator,
+        }
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        PROFLAME_CLIENT: client,
-        PROFLAME_COORDINATOR: coordinator,
-    }
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except BaseException:
+        if coordinator is not None:
+            await coordinator.async_shutdown()
+        else:
+            await client.close()
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+        raise
+    async def async_stop(event) -> None:
+        """Close the local socket when Home Assistant stops."""
+        await coordinator.async_shutdown()
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, async_stop),
+    )
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    client: ProflameClient = hass.data[DOMAIN][entry.entry_id][PROFLAME_CLIENT]
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        coordinator = hass.data[DOMAIN][entry.entry_id][PROFLAME_COORDINATOR]
+        await coordinator.async_shutdown()
         hass.data[DOMAIN].pop(entry.entry_id)
-    await client.close()
 
     return unload_ok

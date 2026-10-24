@@ -51,7 +51,9 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
     ]
     _attr_supported_features = (
         ClimateEntityFeature.PRESET_MODE |
-        ClimateEntityFeature.TARGET_TEMPERATURE
+        ClimateEntityFeature.TARGET_TEMPERATURE |
+        ClimateEntityFeature.TURN_ON |
+        ClimateEntityFeature.TURN_OFF
     )
     _attr_target_temperature_step = 1.0
 
@@ -61,6 +63,10 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
             key='climate',
             translation_key='climate',
         ))
+        unit = self._device.temperature_unit
+        if unit is None:
+            raise ValueError("Cannot create a climate entity before the device reports its unit")
+        self._attr_temperature_unit = unit
 
     @property
     def current_temperature(self) -> float | None:
@@ -80,14 +86,14 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature."""
-        if self._device.temperature_unit == UnitOfTemperature.FAHRENHEIT:
+        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
             return MAX_TEMPERATURE.to_fahrenheit()
         return MAX_TEMPERATURE.to_celcius()
 
     @property
     def min_temp(self) -> float:
         """Return the minimum temperature."""
-        if self._device.temperature_unit == UnitOfTemperature.FAHRENHEIT:
+        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
             return MIN_TEMPERATURE.to_fahrenheit()
         return MIN_TEMPERATURE.to_celcius()
 
@@ -104,13 +110,18 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
     @property
     def temperature_unit(self) -> str:
         """Return the unit of measurement used by the platform."""
-        return self._device.temperature_unit
+        if (unit := self._device.temperature_unit) is not None:
+            self._attr_temperature_unit = unit
+        # HA renders min/max capabilities even while the connection is unavailable.
+        return self._attr_temperature_unit
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         temperature = kwargs.get('temperature', None)
-        if temperature is None or self.temperature_unit is None:
-            return
+        if temperature is None:
+            raise ValueError("A target temperature is required")
+        if self._device.temperature_unit is None:
+            raise ValueError("Cannot set temperature without a reported device unit")
         if self.temperature_unit == UnitOfTemperature.CELSIUS:
             self._device.set_target_temperature(Temperature.celcius(temperature))
         if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
@@ -122,6 +133,14 @@ class ProflameClimate(ProflameEntity, ClimateEntity):
             self._device.set_preset(Preset.OFF)
         if hvac_mode == HVACMode.HEAT:
             self._device.heat()
+
+    async def async_turn_on(self) -> None:
+        """Restore the existing heat configuration."""
+        self._device.heat()
+
+    async def async_turn_off(self) -> None:
+        """Use the climate Off preset, not the full-device power switch."""
+        self._device.set_preset(Preset.OFF)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""

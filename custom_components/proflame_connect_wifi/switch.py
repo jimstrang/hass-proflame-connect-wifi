@@ -6,10 +6,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PROFLAME_COORDINATOR, OperatingMode, Preset
+from .const import DOMAIN, PROFLAME_COORDINATOR, Preset
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
-from .util import coalesce
 
 
 async def async_setup_entry(
@@ -38,11 +37,8 @@ class ProflamePower(ProflameEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return the current fireplace mode."""
-        operating_mode = coalesce(self._device.operating_mode, OperatingMode.OFF)
         preset = self._device.preset
-        if operating_mode == OperatingMode.OFF or preset == Preset.OFF:
-            return False
-        return True
+        return None if preset is None else preset != Preset.OFF
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fireplace off."""

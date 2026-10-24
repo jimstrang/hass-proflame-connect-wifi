@@ -1,5 +1,4 @@
 """Provides light control for Proflame fireplaces."""
-import math
 from typing import Any
 
 from homeassistant.components.light import (
@@ -52,7 +51,7 @@ class ProflameLight(ProflameEntity, LightEntity):
     def is_on(self) -> bool | None:
         """Return true if the primary light is on."""
         brightness = self.brightness
-        return None if brightness is None else brightness
+        return None if brightness is None else brightness > 0
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the primary light on."""
@@ -60,7 +59,7 @@ class ProflameLight(ProflameEntity, LightEntity):
         if brightness is None:
             self._device.turn_on_light()
             return
-        converted = math.ceil(brightness / (255 / MAX_LIGHT_BRIGHTNESS))
+        converted = max(1, round(brightness * MAX_LIGHT_BRIGHTNESS / 255)) if brightness else 0
         self._device.set_light_brightness(converted)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
