@@ -6,10 +6,12 @@
       "cannot_connect": "Failed to connect",
       "no_devices_found": "No devices found on the network",
       "not_proflame_device": "The device did not provide an acknowledged Proflame state.",
+      "cannot_identify": "Discovery did not provide a valid dongle MAC address.",
       "reconfigure_successful": "The connection settings were updated."
     },
     "error": {
-      "cannot_connect": "Could not connect and receive a Proflame state snapshot."
+      "cannot_connect": "Could not connect and receive a Proflame state snapshot.",
+      "cannot_identify": "Connected, but Home Assistant cannot identify a unique dongle MAC address from DHCP discovery. Ensure DHCP discovery or your network integration reports this device, then retry. No settings were changed."
     },
     "flow_title": "{device}",
     "step": {
@@ -25,13 +27,9 @@
           "host": "Host",
           "name": "Name",
           "port": "Port",
-          "unique_id": "Unique ID",
           "read_only": "Read-only mode"
         },
-        "description": "Enter the details of your fireplace. Read-only mode blocks all setting writes. If disabled, RF-initiated operation can override Wi-Fi commands, including Off. Do not rely on unattended shutdown automations.",
-        "data_description": {
-          "unique_id": "Use the dongle's lowercase MAC address (aa:bb:cc:dd:ee:ff), not its IP address. Keep this identity when changing networks."
-        }
+        "description": "Enter the details of your fireplace. Read-only mode blocks all setting writes. If disabled, RF-initiated operation can override Wi-Fi commands, including Off. Do not rely on unattended shutdown automations."
       },
       "reconfigure": {
         "description": "Change the host, port, or read-only mode without changing device identity. Disabling read-only permits setting writes, but does not override the RF remote. RF-initiated operation can overwrite commands, including Off. Do not rely on unattended shutdown automations.",

@@ -7,6 +7,7 @@ from typing import Any
 import probatio as vol
 
 from homeassistant import config_entries
+from homeassistant.components.dhcp import async_discovered_service_info
 from homeassistant.const import (
     CONF_HOST,
     CONF_IP_ADDRESS,
@@ -37,7 +38,6 @@ def build_user_schema(user_input: dict[str, Any] | None = None):
         vol.Required(CONF_NAME, default=state.get(CONF_NAME, DEFAULT_NAME)): str,
         vol.Required(CONF_HOST, default=state.get(CONF_HOST, None)): str,
         vol.Required(CONF_PORT, default=state.get(CONF_PORT, DEFAULT_PORT)): cv.port,
-        vol.Required(CONF_UNIQUE_ID, default=state.get(CONF_UNIQUE_ID, None)): vol.Match(r".*[A-Za-z0-9].*"),
         vol.Required(CONF_READ_ONLY, default=state.get(CONF_READ_ONLY, True)): bool,
     })
 
@@ -48,6 +48,19 @@ def resolve_ip(host) -> str:
         port=None,
         proto=6,
     )][0]
+
+
+def discovery_mac(value: str) -> str | None:
+    """Normalize only usable hardware addresses supplied by discovery."""
+    mac = format_mac(value)
+    if (
+        re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac) is None
+        or mac == "00:00:00:00:00:00"
+        or int(mac[:2], 16) & 1
+    ):
+        return None
+    return mac
+
 
 async def test_connectivity(host: str, port: int = DEFAULT_PORT) -> bool:
     """Validate fireplace is connectable."""
@@ -133,7 +146,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self.context[CONF_HOST] = user_input[CONF_HOST]
         self.context[CONF_IP_ADDRESS] = ip
-        await self._async_set_unique_id(user_input[CONF_UNIQUE_ID])
+        self._abort_duplicate_address(user_input[CONF_HOST], ip)
+        matches = {
+            discovery_mac(info.macaddress)
+            for info in async_discovered_service_info(self.hass)
+            if info.ip == ip
+        }
+        if len(matches) != 1 or None in matches:
+            _LOGGER.warning("Cannot identify Proflame host %s uniquely from DHCP discovery", ip)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=build_user_schema(user_input),
+                errors={CONF_HOST: "cannot_identify"},
+            )
+        await self._async_set_unique_id(matches.pop())
         return self.async_create_entry(
             data={
                 CONF_NAME: user_input[CONF_NAME],
@@ -152,7 +178,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle configuration via the UI."""
         self.context[CONF_HOST] = discovery_info.ip
         self.context[CONF_IP_ADDRESS] = discovery_info.ip
-        await self._async_set_unique_id(format_mac(discovery_info.macaddress))
+        mac = discovery_mac(discovery_info.macaddress)
+        if mac is None:
+            return self.async_abort(reason="cannot_identify")
+        await self._async_set_unique_id(mac)
         in_flight = [x['context'].get(CONF_IP_ADDRESS) for x in self._async_in_progress()]
         if discovery_info.ip in in_flight:
             return self.async_abort(reason="already_in_progress")

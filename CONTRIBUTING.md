@@ -69,6 +69,14 @@ Setup/reconnect requires an acknowledgement and valid `main_mode` and
 `temperature_unit`. This establishes protocol readiness, not measurement
 freshness, physical operation, or permission to actuate.
 
+New config entries obtain their identity automatically from DHCP discovery.
+Manual host setup uses HA's public `async_discovered_service_info` lookup,
+matching the resolved IP to one valid MAC and normalizing it with `format_mac`.
+The DHCP integration is a declared dependency. Missing, invalid, or conflicting
+identity records are setup errors, not reasons to invent an identity or ask the
+user to enter one. No ARP/network probing is used for identification.
+Reconfiguration and existing entries keep their stored identities unchanged.
+
 ### Keepalive and multi-message initial state
 
 Keep `PROFLAMEPING` as an application text message; ordinary RFC 6455 ping/pong
@@ -311,9 +319,9 @@ run before the publishing job starts. HACS checks the triggering commit SHA,
 not a prior release. There are no ignored HACS checks.
 
 Versions are explicit SemVer in the checked-in integration manifest, without a
-`v` prefix or build metadata. The prepared evaluation version is `1.1.0-beta.1`.
+`v` prefix or build metadata. The prepared evaluation version is `1.1.0-beta.2`.
 The workflow checks out the exact validated commit, reads that version, verifies
-the ZIP manifest matches, and creates tag `v1.1.0-beta.1` and its GitHub release
+the ZIP manifest matches, and creates tag `v1.1.0-beta.2` and its GitHub release
 at that commit. Versions with a prerelease suffix are marked as GitHub
 prereleases; HACS users may need to enable beta versions to select them.
 
