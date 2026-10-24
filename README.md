@@ -2,44 +2,40 @@
 
 [![Proflame by SIT](https://raw.githubusercontent.com/home-assistant/brands/master/custom_integrations/proflame_connect_wifi/logo.png)](https://github.com/home-assistant/brands/tree/master/custom_integrations/proflame_connect_wifi)
 
-A community-maintained custom integration for fireplaces with a SIT Proflame
-WiFi dongle. It connects directly over your local network, without a cloud
-account, and is intended for installation through [HACS](https://www.hacs.xyz/).
-It is not a built-in Home Assistant integration or an official SIT or Regency
-product.
+A community-maintained Home Assistant integration for fireplaces with a SIT
+Proflame WiFi dongle. It connects over your local network without a cloud
+account. Install it through [HACS](https://www.hacs.xyz/) or copy the files
+manually.
 
-> **Experimental, read-only by default.** Attended tests on one Regency
-> installation verified RF state updates and selected Wi-Fi controls, but
-> **Wi-Fi Off failed to stop RF-initiated burning**. The official iPhone app
-> showed the same limitation. Installation into a running Home Assistant
-> instance has not yet been validated for this fork. See
-> [RF remote precedence](#rf-remote-precedence-and-shutdown-limitations) before
-> enabling editing or planning automations.
+This is a custom integration, not part of Home Assistant core or an official
+SIT or Regency product.
+
+> **Experimental and read-only by default.** Tested on a Regency installation.
+> Read
+> [RF remote precedence](#rf-remote-precedence-and-shutdown-limitations)
+> before enabling controls or creating automations.
 
 ## Requirements
 
-- Home Assistant **2026.10.2 or newer**. Offline tests cover 2026.10.2 and
-  2026.10.3; compatibility with older releases is not established.
-- A Proflame WiFi dongle exposing the local WebSocket protocol on TCP port
-  **88**, or a manually configured port. Compatibility varies by fireplace and
-  dongle firmware; the presence of Proflame controls alone does not guarantee it.
+- Home Assistant **2026.10.2 or newer**.
+- A Proflame WiFi dongle with a local WebSocket endpoint, normally on TCP port
+  **88**. Other ports can be configured manually. Compatibility depends on the
+  fireplace and dongle firmware; Proflame controls alone do not guarantee it.
 - Network access from Home Assistant to the dongle. A DHCP reservation or stable
   hostname is recommended.
 - [HACS](https://www.hacs.xyz/docs/use/) for managed installation and updates,
   or manual installation as described below.
 
-The observed local endpoint requires no credentials and uses unencrypted
-`ws://`. Keep it on a trusted local network. Do not expose the dongle to the
-Internet through port forwarding or a public reverse proxy.
+The tested endpoint uses unencrypted `ws://` without credentials. Keep it on a
+trusted local network. Do not expose the dongle to the Internet through port
+forwarding or a public reverse proxy.
 
 ## Installation
 
 ### HACS custom repository
 
-This repository is **not listed in the default HACS catalog**. Its packaging is
-configured for release downloads; a published release of this fork is required
-before this installation method is available. Until then, use manual
-installation for development or evaluation.
+This repository is not in the default HACS catalog. Add it as a custom
+repository to download published releases.
 
 Open this repository in HACS:
 
@@ -52,8 +48,8 @@ Or add it manually:
 3. Add `https://github.com/jimstrang/hass-proflame-connect-wifi` with type
    **Integration**.
 4. Find **Proflame Connect WiFi**, select a release, and download it.
-   Evaluation versions such as `1.1.0-beta.1` are prereleases; enable beta
-   versions in the repository's HACS download/version selection if necessary.
+   For an evaluation version such as `1.1.0-beta.1`, use the version selector
+   to choose the release marked as a prerelease, rather than a commit ID.
 5. Restart Home Assistant during a suitable maintenance window.
 6. Continue with [Configuration](#configuration).
 
@@ -72,8 +68,9 @@ the development requirements into your running Home Assistant environment.
 
 ## Configuration
 
-Open **Settings > Devices & services > Add integration**, then search for
-**Proflame Fireplace**. Configuration is through the UI, not YAML.
+If HA discovers the dongle, select **Add** on its discovery card. Otherwise,
+open **Settings > Devices & services > Add integration** and search for
+**Proflame Fireplace**. Setup uses the UI, not YAML.
 
 | Field | Value |
 | --- | --- |
@@ -82,55 +79,35 @@ Open **Settings > Devices & services > Add integration**, then search for
 | Port | `88` unless your device uses another WebSocket port |
 | Read-only mode | Enabled by default. Keep enabled to observe state without sending any setting changes. |
 
-Setup verifies the handshake and initial state without changing settings.
-The integration identifies the dongle automatically using the MAC address in
-Home Assistant's DHCP discovery data; there is no editable Unique ID field.
-Supported DHCP discoveries are also checked before a discovery prompt appears.
-Manual host configuration resolves the host and matches its address to HA's
-discovery records.
-
-If a host connects but has no valid, unambiguous discovery record, setup reports
-that it cannot identify the device. Ensure HA's DHCP discovery or a network
-integration reports the dongle, then retry. The integration does not use ARP,
-guess an identity from a hostname/IP, or generate a random hardware ID. Across
-routed/VLAN networks, initial setup therefore requires discovery information to
-reach HA; simply opening TCP port 88 is not sufficient for identification.
-Existing configured identities are preserved, including legacy manually entered
-IDs. Later host changes through Reconfigure do not replace the stored identity.
-
-For valid MAC-based identities, the integration also advertises HA's standard
-network-MAC device connection so network integrations such as UniFi can correlate
-the same hardware. HA manages the relationship; the integration does not force
-device-record merges or replace existing device/entity identifiers.
+Setup checks the handshake and initial state without changing settings.
+If setup reports that it cannot identify the device, check that HA's DHCP
+discovery or a network integration reports the dongle, then retry. This
+discovery information is required for initial setup even across VLANs.
 
 ### Read-only and editable modes
 
-**Read-only mode is the default, including for existing entries that do not yet
-have this setting.** Upgrading such an entry disables its control writes until
-editing is explicitly enabled. Existing automations that attempt controls will
-receive an error; review them before upgrading.
+Read-only mode is enabled by default. Existing entries without this setting
+also become read-only on upgrade, so review any control automations first:
+their actions will fail until editing is explicitly enabled.
 
-Read-only mode still connects, subscribes to state, and sends application
-keepalives. It blocks all setting writes, including power, climate modes and
+In read-only mode, the integration connects, receives state, and sends
+application keepalives. It blocks setting writes for power, climate modes and
 presets, temperature, flame, fan, lamp, and pilot. It does not shut down the
-fireplace or prevent the RF remote or other clients from controlling it.
+fireplace or stop the RF remote or other clients from controlling it.
 
-Existing entities, identifiers, and reported states remain available. Controls
-can still be visible in HA, but attempting to use them raises a clear read-only
-error without queuing a command. Read-only mode is not implemented by simply
-hiding controls.
+Entities and their reported states remain available. Controls can still appear
+in HA, but using one raises a read-only error without queuing a command.
 
 To enable editing, open the entry's **Reconfigure** action and disable
 **Read-only mode**. Re-enable it there to return to observation-only operation.
-The entry reloads without changing device or entity identities and never
-automatically restores settings. Editable mode permits writes; it does **not**
-claim ownership of the fireplace, override the RF remote, or make Off reliable.
+Changing the setting reloads the entry without automatically restoring fireplace
+settings. Editable mode permits writes but does not take ownership, override the
+RF remote, or make Off reliable.
 
 ### Changing the host or network
 
 Use the integration entry's **Reconfigure** action to change the host or port.
-Keep the unique ID unchanged so existing entities and automations retain their
-identities. Do not delete and recreate the integration just to change its address.
+Do not delete and recreate the integration just to change its address.
 
 For routed or VLAN-separated networks, allow Home Assistant to initiate a TCP
 connection to the dongle's configured port, including return traffic and any
@@ -139,9 +116,8 @@ address belongs to the same dongle before reconfiguring it.
 
 ## Entities
 
-Available controls depend on the fireplace and its reported state. The
-integration currently creates these entities rather than discovering optional
-hardware capabilities.
+The integration creates the following entities. It does not detect optional
+hardware capabilities, so some may not apply to your fireplace.
 
 | Platform | Function |
 | --- | --- |
@@ -153,127 +129,121 @@ hardware capabilities.
 | Switch: Device power | Reported device operating-mode on/off, independent of the climate preset and configured flame height |
 | Sensors (diagnostic, disabled by default) | Free heap, minimum free heap, and WiFi signal, when reported by the firmware |
 
-**Climate Off and the power switch are different controls.** Climate Off
-preserves the inherited behavior of setting flame height to zero and selecting
-Manual mode, unless already device-Off. The power switch sends device Off.
-Their physical effects require validation on the specific fireplace.
+### Device power and climate Off
 
-Device power shows On for a reported nonzero operating mode, including Manual
-with flame height zero; climate can correctly show Off at the same time.
-Turning Device power on restores the remembered operating mode only. It does
-not send an extra flame-restoration command. Use climate Heat/Manual or the
-flame-height control when deliberately requesting heat. Mode-only On can still
-ignite a burner depending on retained device settings; it is not a safe-state
-guarantee. Neither entity confirms physical combustion.
+Climate Off sets flame height to zero and selects Manual mode, unless the device
+is already Off. Device power Off sends the device-Off command. Validate their
+physical effects on your fireplace.
 
-**Smart mode controls flame output automatically.** Direct flame-slider
-adjustments, including zero, are rejected with a clear error while Smart is
-reported, without sending a flame command or silently selecting a different
-mode. Explicitly select Manual or Thermostat before adjusting the configured
-level. Deliberate climate Off, Device power Off, and preset changes remain
-available; their RF overwrite limitations still apply.
+Device power shows On when the reported operating mode is nonzero, including
+Manual with flame height zero. Climate can show Off at the same time.
+Turning Device power on restores only the remembered operating mode, without
+an extra flame-restoration command. Use climate Heat/Manual or the flame-height
+control to request heat deliberately.
+
+Mode-only On can still ignite the burner, depending on retained device
+settings. Neither the power switch nor the climate entity confirms combustion.
+
+### Flame level in Smart mode
+
+Smart mode controls flame output automatically. The integration rejects direct
+flame-slider adjustments, including zero, with an error while Smart is reported.
+It sends no flame command and does not silently switch modes. Select Manual or
+Thermostat before adjusting the configured level.
+
+Climate Off, Device power Off, and preset changes remain available, subject to
+the RF overwrite limitation below.
 
 The flame-level value is a configured setting, not live flame-height telemetry.
-In attended use, Smart raised the physical flame while the reported configured
-level remained unchanged. Do not infer actual flame output or combustion from
-the slider.
-
-This corrects the earlier power-switch display, which treated the Off climate
-preset as device-Off and could appear to revert after a mode-only On command.
-Existing entity IDs and unique IDs are unchanged; the default label is now
-Device power unless the user has supplied a custom name.
+During attended testing, Smart raised the physical flame while the reported
+level stayed unchanged. The slider cannot confirm flame output or combustion.
 
 ## Behavior and limitations
 
 ### RF remote precedence and shutdown limitations
 
-Attended tests on one installation found that, after operation was initiated
-with the RF remote and the remote remained in range, its settings repeatedly
-overwrote Wi-Fi commands. The dongle pushed full snapshots roughly twice per
-second. Lamp changes briefly echoed before reverting, and a Wi-Fi device-Off
-command **did not physically shut down the burning main burner**.
+When the fireplace is started with the RF remote and the remote remains in
+range, its settings can override Wi-Fi commands, including Off. Changes may
+revert, and a reported Off state does not confirm physical shutdown. Editable
+mode does not override the remote.
 
-The official iPhone app sent the same flat `{"main_mode":0}` command in the same
-RF-initiated scenario. It displayed Off while the main burner continued burning;
-RF Off was required to stop it. Do not mistake a transient Off echo or UI state
-for physical shutdown.
-
-After RF Off, the repeated snapshots stopped in the observed window. Wi-Fi
-Manual On and a lamp change to maximum subsequently persisted, and the user
-confirmed the lamp physically changed. The official app also successfully
-switched off app-initiated operation. These results support RF setting
-reassertion, not a universal rule that merely having the remote nearby blocks
-Wi-Fi. The RF radio traffic itself was not captured; other devices and firmware
-may behave differently.
-
-**Do not rely on this integration to extinguish an RF-started fireplace after a
-timer expires or everyone leaves home.** Editable mode does not bypass this
-limitation. Keep normal physical controls available. No automatic takeover,
-continuous retry, remote-disable, or undocumented initialization writes are
-implemented.
+**Do not rely on a timer or presence automation to extinguish an RF-started
+fireplace.** Use the normal RF controls to turn it off. Remote presence alone
+does not necessarily block Wi-Fi control; behavior varies by device and firmware.
+The integration has no automatic takeover, continuous retry, remote-disable,
+or undocumented initialization writes.
 
 ### Other limitations
 
-- **No confirmed burner telemetry.** Presets, operating mode, and configured
-  flame height do not establish combustion. Heating action remains unknown.
-  Undocumented burner-related fields (`sh_memory_1` and `burner_status`) stay
-  internal pending device-specific validation; no gas-consumption or runtime
-  sensors are derived from them.
-- **Temperature freshness is unknown.** Room temperature is the last value
-  reported by the dongle. A live connection or repeated snapshot does not prove
-  a fresh thermometer reading. Do not use this integration as a safety controller
-  or assume it supervises thermostat operation.
-- **Push is not freshness.** An isolated RF lamp adjustment reached an existing
-  subscription without polling on the tested installation. Periodic status
-  polling is not implemented; a keepalive reply does not mean a new settings
-  or temperature snapshot was obtained.
-- **Settings are not physical-operation confirmation.** The integration waits
-  for reported state rather than applying optimistic updates. A state echo still
-  does not confirm that a burner, fan, or lamp is physically operating.
-- **Restoration is limited.** Explicit on actions can restore settings observed
-  during the current client lifetime. The inherited defaults before observation
-  are Manual mode and level 6. These settings are not persisted across reloads.
-- **Device-Off display is inherited.** Fan, light, and flame entities show zero
-  in device Off even when a nonzero setting is retained. Fan cooldown and lamp
-  operation while Off are not established.
-- **Firmware variants differ.** Flat JSON is observed on the tested dongle.
-  Existing indexed-format support is retained, including its mode-5 command
-  envelope, but has not been validated on that device.
-- **Reconnect does not replay commands.** Unsent commands are discarded on
-  disconnect, entities become unavailable, and fresh acknowledged state is
-  required before new commands are accepted. Already transmitted commands
-  cannot be recalled; a multi-command operation can be interrupted.
+- Presets, operating mode, and configured flame height do not establish
+  combustion. Heating action stays unknown. Undocumented fields
+  (`sh_memory_1` and `burner_status`) remain internal until validated for the
+  device; they are not used to calculate gas consumption or runtime.
+- Room temperature is the last value the dongle reported. A live connection or
+  repeated snapshot does not prove the thermometer has taken a fresh reading.
+  This integration is not a safety controller or thermostat supervisor.
+- An isolated RF lamp change reached the existing subscription without polling
+  on the tested installation. The integration does not poll periodically, and
+  keepalive replies do not mean it received a fresh settings or temperature
+  snapshot.
+- State follows device reports rather than optimistic updates. Even an echoed
+  setting does not confirm physical burner, fan, or lamp operation.
+- Explicit On actions can restore settings observed during the current client
+  lifetime. Before any are observed, the defaults are Manual mode and level 6.
+  Settings are not persisted across reloads.
+- Fan, light, and flame entities show zero in device Off even if a nonzero
+  setting is retained. Fan cooldown and lamp behavior while Off are unverified.
+- The tested dongle uses flat JSON. Indexed-format support, including its mode-5
+  command envelope, is retained but has not been validated on that dongle.
+- Disconnects make entities unavailable and discard unsent commands. New
+  commands require fresh acknowledged state; nothing is replayed on reconnect.
+  Already transmitted commands cannot be recalled, and a multi-command
+  operation can be interrupted.
 
-Keep physical controls and manufacturer safety interlocks in use. Initial
-control tests must be attended and explicitly approved by the person responsible
-for the fireplace. Do not leave new fireplace automations unattended.
+Keep physical controls and manufacturer safety interlocks in use. Get explicit
+approval from the person responsible for the fireplace before initial control
+tests, and have someone present. Do not leave new fireplace automations unattended.
 
 ## Troubleshooting and support
 
-- **Cannot connect:** check the host, port, local routing/firewall rules, and
-  hostname resolution. A reachable TCP port alone does not confirm the Proflame
-  protocol. Setup requires an acknowledgement and valid initial state.
-- **Discovery does not appear:** add the integration manually. Discovery is not
-  required for operation.
-- **Controls revert:** the RF remote or another client may be sending settings.
-  Do not repeatedly issue commands to fight another controller.
-- **Read-only error:** this is the default behavior, including after upgrading
-  entries that lack an explicit mode setting. Use **Reconfigure** to review the
-  warning and explicitly enable editing only if appropriate.
-- **Sensors are unknown:** some firmware does not report diagnostic fields.
-  Missing values are not replaced with invented readings.
-  These optional diagnostic sensors are disabled by default for new entities.
-  Enable them individually in HA if your firmware supplies them. Existing
-  enabled/disabled choices are preserved on upgrade; already enabled unknown
-  sensors can be disabled manually.
-- **Temperature is unchanged:** this may be a retained reading, not a connection
-  failure or proof that the room temperature is constant.
+### Cannot connect
+
+Check the host, port, routing, firewall rules, and hostname resolution.
+A reachable TCP port alone does not confirm the Proflame protocol; setup needs
+an acknowledgement and valid initial state.
+
+### No discovery card
+
+Try manual setup. A discovery card is not required for operation, but initial
+setup still needs a valid MAC record in HA's discovery data.
+
+### Controls revert or return a read-only error
+
+If settings revert, the RF remote or another client may be sending them.
+Do not repeatedly send commands to fight another controller.
+
+A read-only error means writes are disabled. This is the default, including
+after upgrading an entry without an explicit mode setting. Use **Reconfigure**
+to review the warning and enable editing only if appropriate.
+
+### Sensors show unknown
+
+Some firmware omits diagnostic fields, so missing readings stay unknown.
+Optional diagnostic sensors are disabled by default for new entities; enable
+them individually if your firmware supplies the data. Upgrades preserve your
+enabled/disabled choices. You can manually disable any already-enabled sensors
+that your device does not support.
+
+### Temperature does not change
+
+The dongle may be reporting a retained value. This alone does not indicate a
+connection failure or prove that room temperature is constant.
 
 For a bug report, enable debug logging from the integration's menu, reproduce
 the problem safely, then disable logging. Include the integration and HA
-versions, fireplace/dongle model and firmware if known, expected behavior, and
-relevant logs. **Remove IP addresses, hostnames, MAC addresses, credentials, and
-unrelated device information before posting publicly.**
+versions, fireplace and dongle model/firmware if known, expected behavior, and
+relevant logs. Remove IP addresses, hostnames, MAC addresses, credentials, and
+unrelated device information before posting publicly.
 
 Use this fork's [issue tracker](https://github.com/jimstrang/hass-proflame-connect-wifi/issues),
 not the original project's tracker.
@@ -290,7 +260,6 @@ selective fixes informed by
 Distributed under the [MIT license](LICENSE).
 
 The linked product logo comes from the Home Assistant brands repository.
-Proflame and SIT names and marks
-belong to their respective owners; they are not licensed under this repository's
-MIT license. Their use identifies the supported product and does not imply
-manufacturer endorsement.
+Proflame and SIT names and marks belong to their respective owners and are not
+covered by this repository's MIT license. They identify the supported product
+without implying manufacturer endorsement.
