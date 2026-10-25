@@ -22,8 +22,8 @@ def test_ci_covers_minimum_and_latest_stable_ha_weekly():
     workflow = yaml.safe_load((ROOT / ".github/workflows/lint.yml").read_text())
     triggers = workflow.get("on", workflow.get(True))
     assert triggers["schedule"] == [{"cron": "0 8 * * 1"}]
-    assert set(triggers["pull_request"]["branches"]) == {"master", "dev"}
-    assert triggers["push"]["branches"] == ["master"]
+    assert triggers["pull_request"]["branches"] == ["dev"]
+    assert set(triggers["push"]["branches"]) == {"master", "dev"}
     job = workflow["jobs"]["ruff"]
     minimum, latest = job["strategy"]["matrix"]["include"]
     hacs = json.loads((ROOT / "hacs.json").read_text())
@@ -46,8 +46,8 @@ def test_development_branch_receives_validation_and_dependency_updates():
     """Validate development PRs and route automated updates away from the release branch."""
     workflow = yaml.safe_load((ROOT / ".github/workflows/validate.yaml").read_text())
     triggers = workflow.get("on", workflow.get(True))
-    assert set(triggers["pull_request"]["branches"]) == {"master", "dev"}
-    assert triggers["push"]["branches"] == ["master"]
+    assert triggers["pull_request"]["branches"] == ["dev"]
+    assert set(triggers["push"]["branches"]) == {"master", "dev"}
     dependabot = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
     assert all(update["target-branch"] == "dev" for update in dependabot["updates"])
 

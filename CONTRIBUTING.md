@@ -12,9 +12,11 @@ device and entity identities. Contributions use the [MIT license](LICENSE).
 
 Use an isolated environment, not your running Home Assistant installation.
 Keep editor settings and any local Home Assistant configuration out of Git.
-CI tests these compatibility targets on pull requests into `dev` or `master`
-and pushes to `master`. Pushes to `dev` are checked through an open PR, avoiding
-duplicate push and PR runs. Weekly checks run on the default branch, `master`:
+CI tests these compatibility targets on pushes to `dev` and `master` and on
+contributor pull requests into `dev`. Release PRs from `dev` to `master` use
+the existing `dev` push checks, avoiding duplicate runs. The release workflow
+validates the merged commit again before publication.
+Weekly checks run on the default branch, `master`:
 
 | Home Assistant | Python |
 | --- | --- |
