@@ -11,7 +11,6 @@ from zipfile import ZipFile
 
 import pytest
 import yaml
-from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = "proflame_connect_wifi"
@@ -52,20 +51,22 @@ def test_development_branch_receives_validation_and_dependency_updates():
     assert all(update["target-branch"] == "dev" for update in dependabot["updates"])
 
 
-def test_ci_installs_runtime_requirements_from_manifest():
-    """Install the manifest's runtime pins without duplicating them in development requirements."""
+def test_no_additional_runtime_requirements_or_websockets_import():
+    """Import the integration and observer even when the old transport dependency is unavailable."""
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
-    runtime_names = {Requirement(value).name for value in manifest["requirements"]}
-    development = (ROOT / "requirements.txt").read_text().splitlines()
-    assert runtime_names.isdisjoint(Requirement(value).name for value in development if value.strip())
-    workflow = yaml.safe_load((ROOT / ".github/workflows/lint.yml").read_text())
-    step = next(step for step in workflow["jobs"]["ruff"]["steps"] if step["name"] == "Install requirements")
-    assert step["shell"] == "bash"
-    command = step["run"].splitlines()[-1]
-    reader, installer = command.split(" | ")
-    assert shlex.split(installer) == ["python3", "-m", "pip", "install", "-r", "/dev/stdin"]
-    result = subprocess.run(shlex.split(reader), cwd=ROOT, capture_output=True, text=True, check=True)
-    assert result.stdout.splitlines() == manifest["requirements"]
+    assert manifest["requirements"] == []
+    subprocess.run([sys.executable, "-c", """
+import builtins
+original = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name == "websockets" or name.startswith("websockets."):
+        raise ImportError("websockets is unavailable")
+    return original(name, *args, **kwargs)
+builtins.__import__ = guarded
+import custom_components.proflame_connect_wifi
+import custom_components.proflame_connect_wifi.config_flow
+import scripts.observe
+"""], cwd=ROOT, check=True, capture_output=True, text=True, timeout=10)
 
 
 @pytest.fixture

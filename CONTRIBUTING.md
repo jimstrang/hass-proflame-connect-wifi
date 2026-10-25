@@ -26,10 +26,8 @@ Weekly checks run on the default branch, `master`:
 Install dependencies and run the baseline checks:
 
 ```bash
-set -o pipefail
 uv venv .venv --python 3.14
 uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv/bin/python -r /dev/stdin
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check .
 ```
@@ -37,11 +35,9 @@ uv pip install --python .venv/bin/python -r requirements.txt
 Test latest stable separately:
 
 ```bash
-set -o pipefail
 uv venv .venv-current --python 3.14
 uv pip install --python .venv-current/bin/python -r requirements.txt
 uv pip install --python .venv-current/bin/python --upgrade homeassistant
-.venv-current/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv-current/bin/python -r /dev/stdin
 .venv-current/bin/python -m pytest -q
 .venv-current/bin/ruff check .
 ```
@@ -53,11 +49,11 @@ compatibility, not verified hardware behavior.
 Update CI's Python target when HA changes its required Python minor version;
 pip otherwise selects the newest HA compatible with the older interpreter.
 
-Runtime dependencies are pinned only in the integration's `manifest.json`.
-The commands above install those pins after the development requirements and HA.
+The integration uses HA's shared `aiohttp` session and has no additional runtime
+requirements. `websockets` is a development-only dependency for loopback mock
+servers; it is not imported by the integration or the observation script.
 Dependabot opens weekly development dependency and GitHub Actions updates into
-`dev`; review runtime dependency updates manually in the manifest and test both
-runtime pairs.
+`dev`. Test both compatibility targets when updating dependencies.
 
 ## Tests and pull requests
 

@@ -63,8 +63,8 @@ Or add it manually:
    `<config>/custom_components/proflame_connect_wifi/manifest.json` exists.
 4. Restart Home Assistant, then continue with [Configuration](#configuration).
 
-Home Assistant installs the integration's runtime dependencies. Do not install
-the development requirements into your running Home Assistant environment.
+The integration uses networking libraries provided by Home Assistant. Do not
+install the development requirements into your running Home Assistant environment.
 
 ## Configuration
 

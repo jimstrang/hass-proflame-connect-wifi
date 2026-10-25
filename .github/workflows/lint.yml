@@ -48,7 +48,6 @@ jobs:
           run: |
             python3 -m pip install -r requirements.txt
             python3 -m pip install --upgrade "$HA_REQUIREMENT"
-            python3 -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | python3 -m pip install -r /dev/stdin
 
         - name: "Report installed runtime"
           run: |

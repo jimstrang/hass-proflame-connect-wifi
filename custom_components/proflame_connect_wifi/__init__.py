@@ -5,6 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .client import ProflameClient
 from .const import CONF_READ_ONLY
@@ -31,6 +32,7 @@ async def async_setup_entry(
         host=entry.data[CONF_HOST],
         port=entry.data[CONF_PORT],
         read_only=entry.data.get(CONF_READ_ONLY, True),
+        session=async_get_clientsession(hass),
     )
     coordinator = None
     try:

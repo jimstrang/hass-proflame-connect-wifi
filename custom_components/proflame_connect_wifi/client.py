@@ -1,4 +1,5 @@
 """Provides high level abstractions for interacting with Proflame fireplaces."""
+from aiohttp import ClientSession
 from homeassistant.components.climate import HVACAction, HVACMode, UnitOfTemperature
 from homeassistant.exceptions import ServiceValidationError
 
@@ -19,9 +20,10 @@ class ProflameClient(ProflameClientBase):
 
     def __init__(
         self, device_id, host, port=None, logger=None, *, read_only: bool = True,
+        session: ClientSession | None = None,
     ) -> None:
         """Create new class instance."""
-        super().__init__(device_id, host, port, logger, read_only=read_only)
+        super().__init__(device_id, host, port, logger, read_only=read_only, session=session)
         self._stored_fan_speed = MAX_LEVEL
         self._stored_flame = MAX_LEVEL
         self._stored_light_brightness = MAX_LEVEL

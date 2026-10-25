@@ -50,6 +50,18 @@ async def test_setup_initial_timeout_closes_client(setup_hass, entry):
     setup_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
 
+async def test_setup_passes_ha_shared_session(setup_hass, entry, client):
+    """Use HA's session without taking ownership of its lifetime."""
+    session = integration.async_get_clientsession(setup_hass)
+    with patch.object(integration, "ProflameClient", return_value=client) as factory, patch.object(
+        client, "open", new=AsyncMock(),
+    ):
+        assert await integration.async_setup_entry(setup_hass, entry)
+    assert factory.call_args.kwargs["session"] is session
+    await entry.runtime_data.async_shutdown()
+    assert not session.closed
+
+
 async def test_cancelled_setup_closes_client(setup_hass, entry):
     """Cancellation during the initial wait still closes the transport."""
     client = MagicMock()
