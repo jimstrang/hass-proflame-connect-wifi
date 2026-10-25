@@ -138,7 +138,7 @@ async def test_smart_climate_off_and_device_off_keep_existing_commands(hass, cli
     coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
     await ProflameClimate(coordinator).async_turn_off()
     assert drain(client) == [{"flame_control": 0}, {"main_mode": 1}]
-    client.turn_off()
+    client.set_operating_mode(OperatingMode.OFF)
     assert drain(client) == [{"main_mode": 0}]
     await coordinator.async_shutdown()
 

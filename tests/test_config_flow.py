@@ -56,7 +56,7 @@ async def test_manual_configuration_and_validation(flow):
         "name": "Fireplace", "host": "localhost", "port": 88,
     }
     with patch.object(config_flow, "resolve_ip", return_value="127.0.0.1") as resolve, patch.object(
-        config_flow, "test_connectivity", new=AsyncMock(return_value=True),
+        config_flow.ProflameClient, "test_connection", new=AsyncMock(return_value=True),
     ) as probe, patch.object(
         flow.hass, "async_add_executor_job", wraps=flow.hass.async_add_executor_job,
     ) as executor:
@@ -83,7 +83,9 @@ async def test_manual_errors_are_shown(flow, dns_failure):
         config_flow, "resolve_ip",
         side_effect=OSError("DNS failed") if dns_failure else None,
         return_value="127.0.0.1",
-    ), patch.object(config_flow, "test_connectivity", new=AsyncMock(return_value=False)):
+    ), patch.object(
+        config_flow.ProflameClient, "test_connection", new=AsyncMock(return_value=False),
+    ):
         result = await flow.async_step_user({
             "name": "Fireplace", "host": "localhost", "port": 88,
         })
@@ -119,7 +121,8 @@ async def test_dhcp_protocol_filter(flow, speaks_proflame):
         ip="127.0.0.1", hostname="espressif", macaddress="aabbccddeeff",
     )
     with patch.object(
-        config_flow, "test_connectivity", new=AsyncMock(return_value=speaks_proflame),
+        config_flow.ProflameClient, "test_connection",
+        new=AsyncMock(return_value=speaks_proflame),
     ) as probe:
         result = await flow.async_step_dhcp(discovery)
     probe.assert_awaited_once_with("127.0.0.1", 88)
@@ -257,7 +260,7 @@ async def test_manual_setup_checks_discovered_mac_duplicates(flow):
 
 async def test_invalid_dhcp_identity_never_opens_probe(flow):
     """Invalid discovery MACs cannot create a device or trigger a connectivity probe."""
-    with patch.object(config_flow, "test_connectivity", new=AsyncMock()) as probe:
+    with patch.object(config_flow.ProflameClient, "test_connection", new=AsyncMock()) as probe:
         result = await flow.async_step_dhcp(DhcpServiceInfo(
             ip="127.0.0.1", hostname="espressif", macaddress="invalid",
         ))
