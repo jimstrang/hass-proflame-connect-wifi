@@ -21,8 +21,10 @@ CI tests these runtime pairs:
 Install dependencies and run the baseline checks:
 
 ```bash
+set -o pipefail
 uv venv .venv --python 3.14.6
 uv pip install --python .venv/bin/python -r requirements.txt
+.venv/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv/bin/python -r /dev/stdin
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check .
 ```
@@ -30,9 +32,11 @@ uv pip install --python .venv/bin/python -r requirements.txt
 Test the newer runtime separately:
 
 ```bash
+set -o pipefail
 uv venv .venv-current --python 3.14.9
 uv pip install --python .venv-current/bin/python -r requirements.txt
 uv pip install --python .venv-current/bin/python homeassistant==2026.10.3
+.venv-current/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv-current/bin/python -r /dev/stdin
 .venv-current/bin/python -m pytest -q
 .venv-current/bin/ruff check .
 ```
@@ -40,6 +44,11 @@ uv pip install --python .venv-current/bin/python homeassistant==2026.10.3
 Standard `venv` and `pip` also work. If uv cannot download the required Python
 patch release, pass the path to an installed interpreter with `--python`.
 Testing an older Python patch does not cover the runtime listed above.
+
+Runtime dependencies are pinned only in the integration's `manifest.json`.
+The commands above install those pins after the development requirements and HA.
+Dependabot updates development requirements and GitHub Actions weekly; review
+runtime dependency updates manually in the manifest and test both runtime pairs.
 
 ## Tests and pull requests
 

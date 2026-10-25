@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -10,9 +11,26 @@ from zipfile import ZipFile
 
 import pytest
 import yaml
+from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = "proflame_connect_wifi"
+
+
+def test_ci_installs_runtime_requirements_from_manifest():
+    """Install the manifest's runtime pins without duplicating them in development requirements."""
+    manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
+    runtime_names = {Requirement(value).name for value in manifest["requirements"]}
+    development = (ROOT / "requirements.txt").read_text().splitlines()
+    assert runtime_names.isdisjoint(Requirement(value).name for value in development if value.strip())
+    workflow = yaml.safe_load((ROOT / ".github/workflows/lint.yml").read_text())
+    step = next(step for step in workflow["jobs"]["ruff"]["steps"] if step["name"] == "Install requirements")
+    assert step["shell"] == "bash"
+    command = step["run"].splitlines()[-1]
+    reader, installer = command.split(" | ")
+    assert shlex.split(installer) == ["python3", "-m", "pip", "install", "-r", "/dev/stdin"]
+    result = subprocess.run(shlex.split(reader), cwd=ROOT, capture_output=True, text=True, check=True)
+    assert result.stdout.splitlines() == manifest["requirements"]
 
 
 @pytest.fixture

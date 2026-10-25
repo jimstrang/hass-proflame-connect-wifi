@@ -351,7 +351,7 @@ class ProflameClientBase:
         try:
             await asyncio.wait_for(self._state_received.wait(), timeout=timeout)
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._warning('Timeout waiting for initial state from device')
             return False
 
