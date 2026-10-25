@@ -1,8 +1,9 @@
 """Exercise the actual WebSocket transport entirely on loopback."""
 import asyncio
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
+from aiohttp import ClientSession
 import pytest
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
@@ -119,7 +120,7 @@ async def test_reconnect_fresh_state_and_no_stale_commands(monkeypatch, snapshot
                 blocked.set()
                 await asyncio.Event().wait()
 
-            monkeypatch.setattr(old_socket, "send", blocked_send)
+            monkeypatch.setattr(old_socket, "send_str", blocked_send)
             client.set_state("fan_control", 1)
             await blocked.wait()
             client.set_state("lamp_control", 2)
@@ -353,19 +354,21 @@ async def test_websocket_pong_is_not_application_liveness(
             if respond_with_state and message == ApiControl.PING:
                 await ws.send(json.dumps({"fan_control": snapshot["fan_control"]}))
 
-    async with serve(device, "127.0.0.1", 0) as server:
+    async with ClientSession() as session, serve(device, "127.0.0.1", 0) as server:
+        connect = Mock(wraps=session.ws_connect)
+        monkeypatch.setattr(session, "ws_connect", connect)
         client = ProflameClientBase(
             "test", "127.0.0.1", server.sockets[0].getsockname()[1],
-            auto_reconnect=False,
+            auto_reconnect=False, session=session,
         )
         availability = []
         client.register_connection_callback(availability.append)
         try:
             await client.open()
             assert await client.wait_for_state(1)
-            assert client._ws.ping_interval is None
-            transport_pong = await client._ws.ping(b"offline-test-only")
-            await asyncio.wait_for(transport_pong, 1)
+            assert connect.call_count == 1
+            assert connect.call_args.kwargs["heartbeat"] is None
+            await client._ws.ping(b"offline-test-only")
             assert client.connected
             if respond_with_state:
                 await wait_until(lambda: received.count(ApiControl.PING) >= 12)
@@ -434,7 +437,7 @@ async def test_open_failure_and_cancellation(monkeypatch):
         attempted.set()
         raise OSError("connection refused")
 
-    monkeypatch.setattr(client_base, "connect", refused_connection)
+    monkeypatch.setattr(ClientSession, "ws_connect", refused_connection)
     client = ProflameClientBase("test", "127.0.0.1", 1)
     await client.open()
     task = client._connection
@@ -462,12 +465,12 @@ async def test_unexpected_task_failure_is_logged(monkeypatch, caplog):
 async def test_dispatch_failure_is_not_retried(client):
     """A failed send is surfaced, balanced in the queue, and never replayed."""
     socket = AsyncMock()
-    socket.send.side_effect = OSError("lost connection")
+    socket.send_str.side_effect = OSError("lost connection")
     client.set_state("fan_control", 1)
     with pytest.raises(OSError):
         await client._dispatcher(socket)
     await asyncio.wait_for(client._queue.join(), 1)
-    socket.send.assert_awaited_once_with('{"fan_control":1}')
+    socket.send_str.assert_awaited_once_with('{"fan_control":1}')
 
 
 @pytest.mark.parametrize("task_kind", ["keepalive", "dispatcher"])
@@ -484,7 +487,7 @@ async def test_blocked_sends_have_deadlines(monkeypatch, client, task_kind):
         finally:
             cancelled.set()
 
-    socket.send.side_effect = blocked_send
+    socket.send_str.side_effect = blocked_send
     client._last_recv = client_base.time.monotonic()
     if task_kind == "dispatcher":
         client.set_state("fan_control", 2)
@@ -543,3 +546,108 @@ async def test_read_only_probe(snapshot, monkeypatch):
         )
     assert received[0] == ApiControl.CONN_SYN
     assert set(received) <= {ApiControl.CONN_SYN, ApiControl.PING}
+
+
+@pytest.mark.parametrize("shared", [False, True])
+async def test_session_ownership_and_socket_cleanup(snapshot, shared):
+    """Closing a socket never closes a borrowed session, including after reopening."""
+    async def device(ws):
+        assert await ws.recv() == ApiControl.CONN_SYN
+        await ws.send(ApiControl.CONN_ACK)
+        await ws.send(json.dumps(snapshot))
+        await ws.wait_closed()
+
+    async with ClientSession() as session, serve(device, "127.0.0.1", 0) as server:
+        client = ProflameClientBase(
+            "test", "127.0.0.1", server.sockets[0].getsockname()[1],
+            session=session if shared else None,
+        )
+        for _ in range(2):
+            try:
+                await client.open()
+                assert await client.wait_for_state(1)
+                used_session = client._session
+                socket = client._ws
+                if shared:
+                    assert used_session is session
+            finally:
+                await client.close()
+            assert socket.closed
+            assert used_session.closed is (not shared)
+            assert not session.closed
+
+
+async def test_probe_preserves_shared_session(snapshot):
+    """Configuration probes must close their socket without closing HA's session."""
+    async def device(ws):
+        assert await ws.recv() == ApiControl.CONN_SYN
+        await ws.send(ApiControl.CONN_ACK)
+        await ws.send(json.dumps(snapshot))
+        await ws.wait_closed()
+
+    async with ClientSession() as session, serve(device, "127.0.0.1", 0) as server:
+        assert await ProflameClientBase.test_connection(
+            "127.0.0.1", server.sockets[0].getsockname()[1], session=session,
+        )
+        assert not session.closed
+
+
+async def test_oversized_frame_disconnects_and_logs_error(snapshot, caplog):
+    """An aiohttp receive error must end availability rather than count as valid traffic."""
+    release = asyncio.Event()
+
+    async def device(ws):
+        assert await ws.recv() == ApiControl.CONN_SYN
+        await ws.send(ApiControl.CONN_ACK)
+        await ws.send(json.dumps(snapshot))
+        await release.wait()
+        await ws.send("x" * 65537)
+        await ws.wait_closed()
+
+    async with serve(device, "127.0.0.1", 0) as server:
+        client = ProflameClientBase(
+            "test", "127.0.0.1", server.sockets[0].getsockname()[1],
+            auto_reconnect=False,
+        )
+        availability = []
+        client.register_connection_callback(availability.append)
+        try:
+            await client.open()
+            assert await client.wait_for_state(1)
+            release.set()
+            await asyncio.wait_for(asyncio.shield(client._connection), 1)
+            assert availability == [True, False]
+            assert not client.connected
+            assert "WebSocket receive failed" in caplog.text
+            assert "65536" in caplog.text
+        finally:
+            release.set()
+            await client.close()
+
+
+async def test_websocket_open_deadline(monkeypatch):
+    """A TCP connection with no HTTP upgrade cannot leave setup hanging."""
+    monkeypatch.setattr(client_base, "INITIAL_STATE_TIMEOUT", 0.03)
+    peer_closed = asyncio.Event()
+
+    async def device(reader, writer):
+        try:
+            await reader.read()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            peer_closed.set()
+
+    async with await asyncio.start_server(device, "127.0.0.1", 0) as server:
+        client = ProflameClientBase(
+            "test", "127.0.0.1", server.sockets[0].getsockname()[1],
+            auto_reconnect=False,
+        )
+        try:
+            await client.open()
+            await asyncio.wait_for(asyncio.shield(client._connection), 1)
+            await asyncio.wait_for(peer_closed.wait(), 1)
+            assert not client.connected
+            assert client._ws is None
+        finally:
+            await client.close()

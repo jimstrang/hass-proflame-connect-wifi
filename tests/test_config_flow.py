@@ -1,6 +1,6 @@
 """Test manual configuration, filtered discovery, and stable reconfiguration."""
 from types import MappingProxyType
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import probatio
 import pytest
@@ -67,7 +67,7 @@ async def test_manual_configuration_and_validation(flow):
     assert result["data"]["unique_id"] == "aa:bb:cc:dd:ee:ff"
     assert result["data"]["read_only"] is True
     assert form["data_schema"](data)["read_only"] is True
-    probe.assert_awaited_once_with("localhost", 88)
+    probe.assert_awaited_once_with("localhost", 88, session=ANY)
     executor.assert_called_once_with(resolve, "localhost")
     for invalid_port in [0, 65536, -1]:
         with pytest.raises(probatio.Invalid):
@@ -125,7 +125,7 @@ async def test_dhcp_protocol_filter(flow, speaks_proflame):
         new=AsyncMock(return_value=speaks_proflame),
     ) as probe:
         result = await flow.async_step_dhcp(discovery)
-    probe.assert_awaited_once_with("127.0.0.1", 88)
+    probe.assert_awaited_once_with("127.0.0.1", 88, session=ANY)
     if speaks_proflame:
         assert result["step_id"] == "discovery_confirm"
         created = await flow.async_step_discovery_confirm({"name": "Fireplace"})

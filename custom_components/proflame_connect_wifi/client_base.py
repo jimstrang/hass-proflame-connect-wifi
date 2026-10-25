@@ -5,8 +5,9 @@ import json
 import logging
 import time
 
-from websockets.asyncio.client import connect
-from websockets.exceptions import WebSocketException
+from aiohttp import (
+    ClientError, ClientSession, ClientWebSocketResponse, ClientWSTimeout, WSMsgType,
+)
 
 from homeassistant.exceptions import HomeAssistantError
 
@@ -36,10 +37,12 @@ class ProflameClientBase:
     """Client used for interacting with Proflame fireplaces."""
 
     @staticmethod
-    async def test_connection(host: str, port: int | None = None) -> bool:
+    async def test_connection(
+        host: str, port: int | None = None, *, session: ClientSession | None = None,
+    ) -> bool:
         """Test the connection to the fireplace."""
 
-        client = ProflameClientBase("probe", host, port, auto_reconnect=False)
+        client = ProflameClientBase("probe", host, port, auto_reconnect=False, session=session)
         try:
             await client.open()
             return await client.wait_for_state()
@@ -48,7 +51,7 @@ class ProflameClientBase:
 
     def __init__(
         self, device_id, host, port=None, logger=None, auto_reconnect=True,
-        *, read_only: bool = True,
+        *, read_only: bool = True, session: ClientSession | None = None,
     ) -> None:
         """Create new class instance."""
         if not isinstance(read_only, bool):
@@ -59,10 +62,12 @@ class ProflameClientBase:
         self._host = host
         self._port = port or DEFAULT_PORT
         self._logger = _HostLogger(logger or _LOGGER, host)
+        self._session = session
+        self._owns_session = session is None
         self._callbacks = []
         self._connection_callbacks = []
 
-        self._ws = None
+        self._ws: ClientWebSocketResponse | None = None
         self._connected = False
         self._acknowledged = False
         self._last_recv = 0.0
@@ -88,10 +93,12 @@ class ProflameClientBase:
         while True:
             tasks = []
             try:
-                async with connect(
-                    self.uri, ping_interval=None, open_timeout=INITIAL_STATE_TIMEOUT,
-                    close_timeout=2, max_size=65536,
-                ) as websocket:
+                async with asyncio.timeout(INITIAL_STATE_TIMEOUT):
+                    websocket = await self._session.ws_connect(
+                        self.uri, heartbeat=None, timeout=ClientWSTimeout(ws_close=2),
+                        max_msg_size=65536,
+                    )
+                async with websocket:
                     self._logger.debug('Connection opened')
                     self._ws = websocket
                     self._state.clear()
@@ -101,7 +108,7 @@ class ProflameClientBase:
                     self._acknowledged = False
                     self._last_recv = time.monotonic()
                     await asyncio.wait_for(
-                        websocket.send(ApiControl.CONN_SYN), INITIAL_STATE_TIMEOUT,
+                        websocket.send_str(ApiControl.CONN_SYN), INITIAL_STATE_TIMEOUT,
                     )
                     tasks = [
                         asyncio.create_task(self._listener(websocket)),
@@ -130,7 +137,7 @@ class ProflameClientBase:
                         for task in tasks:
                             task.cancel()
                         await asyncio.gather(*tasks, return_exceptions=True)
-            except (OSError, TimeoutError, WebSocketException) as err:
+            except (OSError, TimeoutError, ClientError) as err:
                 self._logger.warning('Connection lost: %s', err)
             finally:
                 self._set_connected(False)
@@ -179,11 +186,11 @@ class ProflameClientBase:
             item = await self._queue.get()
             try:
                 await asyncio.wait_for(
-                    websocket.send(self._format_command(item)), KEEPALIVE_TIMEOUT,
+                    websocket.send_str(self._format_command(item)), KEEPALIVE_TIMEOUT,
                 )
             except asyncio.CancelledError:
                 raise
-            except (OSError, WebSocketException) as err:
+            except (OSError, ClientError) as err:
                 # Don't retry: the connection is being re-established, and
                 # replaying fireplace commands later could be surprising.
                 self._logger.warning('Failed to send command (%s): %s', item, err)
@@ -302,7 +309,7 @@ class ProflameClientBase:
                 self._logger.warning('No response from device in %.0f seconds', silence)
                 return
             self._logger.debug("SEND: %s", ApiControl.PING)
-            await asyncio.wait_for(websocket.send(ApiControl.PING), KEEPALIVE_TIMEOUT)
+            await asyncio.wait_for(websocket.send_str(ApiControl.PING), KEEPALIVE_TIMEOUT)
 
     async def _listener(self, websocket) -> None:
         """Receive messages until the connection closes.
@@ -310,8 +317,10 @@ class ProflameClientBase:
         Connection errors propagate so the connection can be re-established.
         """
         async for message in websocket:
-            self._logger.debug('RECV: %s', message)
-            if self._handle_message(message):
+            if message.type == WSMsgType.ERROR:
+                raise ClientError(f"WebSocket receive failed: {message.data}")
+            self._logger.debug('RECV: %s', message.data)
+            if self._handle_message(message.data):
                 self._last_recv = time.monotonic()
         self._logger.warning('Connection closed by device')
 
@@ -324,6 +333,9 @@ class ProflameClientBase:
             await asyncio.gather(self._connection, return_exceptions=True)
             self._connection = None
         self._set_connected(False)
+        if self._owns_session and self._session is not None:
+            await self._session.close()
+            self._session = None
         self._logger.debug('Connection closed')
 
     @property
@@ -339,6 +351,8 @@ class ProflameClientBase:
         """Connect to the Proflame websocket."""
         self._logger.debug('Connection opening')
         if self._connection is None or self._connection.done():
+            if self._session is None:
+                self._session = ClientSession()
             self._connection = asyncio.create_task(self._connect())
             self._connection.add_done_callback(self._connection_done)
 

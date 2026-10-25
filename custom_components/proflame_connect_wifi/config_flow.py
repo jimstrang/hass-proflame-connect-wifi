@@ -17,6 +17,7 @@ from homeassistant.const import (
 )
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .client import ProflameClient
@@ -93,7 +94,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except OSError as err:
             _LOGGER.warning("Cannot resolve Proflame host %s: %s", host, err)
             return None
-        if not await ProflameClient.test_connection(host, port):
+        if not await ProflameClient.test_connection(
+            host, port, session=async_get_clientsession(self.hass),
+        ):
             return None
         return ip
 
@@ -166,7 +169,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_in_progress")
 
         # "espressif" is not specific to Proflame hardware.
-        if not await ProflameClient.test_connection(discovery_info.ip, DEFAULT_PORT):
+        if not await ProflameClient.test_connection(
+            discovery_info.ip, DEFAULT_PORT, session=async_get_clientsession(self.hass),
+        ):
             return self.async_abort(reason="not_proflame_device")
 
         return await self.async_step_discovery_confirm()

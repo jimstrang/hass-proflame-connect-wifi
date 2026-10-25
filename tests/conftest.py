@@ -3,26 +3,26 @@ import asyncio
 import json
 from urllib.parse import urlsplit
 
+from aiohttp import ClientSession
 import pytest
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.proflame_connect_wifi import client_base
+from custom_components import proflame_connect_wifi as integration
+from custom_components.proflame_connect_wifi import config_flow
 from custom_components.proflame_connect_wifi.client import ProflameClient
-from scripts import observe
 
 
 @pytest.fixture(autouse=True)
 def loopback_only(monkeypatch):
     """Never let an integration test connect to a real fireplace."""
-    connect = client_base.connect
+    connect = ClientSession.ws_connect
 
-    def guarded_connect(uri, **kwargs):
+    def guarded_connect(self, uri, **kwargs):
         assert urlsplit(uri).hostname in {"127.0.0.1", "localhost", "::1"}
-        return connect(uri, **kwargs)
+        return connect(self, uri, **kwargs)
 
-    monkeypatch.setattr(client_base, "connect", guarded_connect)
-    monkeypatch.setattr(observe, "connect", guarded_connect)
+    monkeypatch.setattr(ClientSession, "ws_connect", guarded_connect)
 
 
 @pytest.fixture
@@ -84,11 +84,14 @@ def client(snapshot):
 
 
 @pytest.fixture
-async def hass(tmp_path):
+async def hass(tmp_path, monkeypatch):
     """Create HA without starting integrations or contacting external services."""
     result = HomeAssistant(str(tmp_path))
-    yield result
-    await result.async_stop(force=True)
+    async with ClientSession() as session:
+        monkeypatch.setattr(integration, "async_get_clientsession", lambda hass: session)
+        monkeypatch.setattr(config_flow, "async_get_clientsession", lambda hass: session)
+        yield result
+        await result.async_stop(force=True)
 
 
 @pytest.fixture(autouse=True)
