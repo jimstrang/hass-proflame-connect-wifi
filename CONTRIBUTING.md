@@ -1,8 +1,9 @@
 # Contributing
 
 Open an issue before changing control behavior, supported modes, or protocol
-assumptions. Fork the repository, create a branch from `master`, and submit a
-focused pull request with tests and any necessary documentation updates.
+assumptions. Fork the repository, create a branch from `dev`, and submit a
+focused pull request into `dev` with tests and any necessary documentation
+updates. `dev` holds unreleased changes; `master` receives reviewed releases.
 
 Follow the existing code style. Preserve the integration domain and existing
 device and entity identities. Contributions use the [MIT license](LICENSE).
@@ -11,35 +12,52 @@ device and entity identities. Contributions use the [MIT license](LICENSE).
 
 Use an isolated environment, not your running Home Assistant installation.
 Keep editor settings and any local Home Assistant configuration out of Git.
-CI tests these runtime pairs:
+CI tests these compatibility targets on pushes to `dev` and `master` and on
+contributor pull requests into `dev`. Release PRs from `dev` to `master` use
+the existing `dev` push checks, avoiding duplicate runs. The release workflow
+validates the merged commit again before publication.
+Weekly checks run on the default branch, `master`:
 
 | Home Assistant | Python |
 | --- | --- |
-| 2026.10.2 | 3.14.6 |
-| 2026.10.3 | 3.14.9 |
+| Minimum supported: 2026.10.2 | Latest 3.14 patch |
+| Latest stable from PyPI | Latest 3.14 patch |
 
 Install dependencies and run the baseline checks:
 
 ```bash
-uv venv .venv --python 3.14.6
+set -o pipefail
+uv venv .venv --python 3.14
 uv pip install --python .venv/bin/python -r requirements.txt
+.venv/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv/bin/python -r /dev/stdin
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check .
 ```
 
-Test the newer runtime separately:
+Test latest stable separately:
 
 ```bash
-uv venv .venv-current --python 3.14.9
+set -o pipefail
+uv venv .venv-current --python 3.14
 uv pip install --python .venv-current/bin/python -r requirements.txt
-uv pip install --python .venv-current/bin/python homeassistant==2026.10.3
+uv pip install --python .venv-current/bin/python --upgrade homeassistant
+.venv-current/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv-current/bin/python -r /dev/stdin
 .venv-current/bin/python -m pytest -q
 .venv-current/bin/ruff check .
 ```
 
-Standard `venv` and `pip` also work. If uv cannot download the required Python
-patch release, pass the path to an installed interpreter with `--python`.
-Testing an older Python patch does not cover the runtime listed above.
+Standard `venv` and `pip` also work. CI logs the installed HA and Python versions;
+the latest target excludes prereleases. Passing tests establish offline
+compatibility, not verified hardware behavior.
+
+Update CI's Python target when HA changes its required Python minor version;
+pip otherwise selects the newest HA compatible with the older interpreter.
+
+Runtime dependencies are pinned only in the integration's `manifest.json`.
+The commands above install those pins after the development requirements and HA.
+Dependabot opens weekly development dependency and GitHub Actions updates into
+`dev`; review runtime dependency updates manually in the manifest and test both
+runtime pairs.
 
 ## Tests and pull requests
 
@@ -117,17 +135,21 @@ not change the manifest version.
 
 To release:
 
-1. Open a separate release PR that bumps
-   `custom_components/proflame_connect_wifi/manifest.json` and describes the
-   included changes and upgrade notes.
+1. Finish the changes on `dev`, then bump
+   `custom_components/proflame_connect_wifi/manifest.json` in a separate commit.
+   Open a `dev` to `master` release PR describing the included changes and
+   upgrade notes.
 2. Use SemVer without a `v` prefix or build metadata, for example
-   `1.1.0-beta.3`. A prerelease suffix produces a GitHub prerelease.
+   `1.0.0-beta.2`. A prerelease suffix produces a GitHub prerelease.
 3. Wait for both runtime test jobs, HACS validation, and Hassfest to pass.
-4. Merge to `master`. The version change triggers the Release workflow, which
-   runs validation again before publishing.
+4. Merge to `master` with a merge commit, not squash or rebase. The version
+   change triggers the Release workflow, which runs validation again before
+   publishing.
 5. Verify the published tag, release notes, and `proflame_connect_wifi.zip`.
    The ZIP must contain the runtime files and license at its root, with a
    manifest matching the tagged source.
+6. Keep `dev` and merge `master` back into it before starting the next cycle.
+   Shared history prevents earlier changes from reappearing in release PRs.
 
 Other manifest edits do not trigger publication. The trigger compares versions
 on pushes to `master`; do not bypass release review with a direct version bump.

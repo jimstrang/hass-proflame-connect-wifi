@@ -6,17 +6,14 @@ class ApiAttrs(StrEnum):
     """Available attributes accessible via the API."""
 
     AUXILIARY = "auxiliary_out"
-    BURNER_STATUS = "burner_status"
     CURRENT_TEMPERATURE = "room_temperature"
     FAN_SPEED = "fan_control"
-    FIRMWARE_REVISION = "fw_revision"
     FLAME_HEIGHT = "flame_control"
     FREE_HEAP = "free_heap"
     LIGHT_BRIGHTNESS = "lamp_control"
     MIN_FREE_HEAP = "min_free_heap"
     OPERATING_MODE = "main_mode"
     PILOT_MODE = "pilot_mode"
-    REMOTE_CONTROL = "remote_control"
     SPLIT_FLOW = "split_flow"
     TARGET_TEMPERATURE = "temperature_set"
     TEMPERATURE_UNIT = "temperature_unit"
@@ -67,14 +64,17 @@ DEFAULT_NAME = 'Fireplace'
 DEFAULT_PORT = 88
 INITIAL_STATE_TIMEOUT = 10
 
+# Fan speed, flame height, and light brightness all run from 0 to this level.
+MAX_LEVEL = 6
+
 # Validate known numeric fields independently; unknown diagnostics aren't controls.
 STATE_RANGES = {
     ApiAttrs.OPERATING_MODE: (0, 5),
     ApiAttrs.TEMPERATURE_UNIT: (0, 1),
     ApiAttrs.PILOT_MODE: (0, 1),
-    ApiAttrs.FAN_SPEED: (0, 6),
-    ApiAttrs.FLAME_HEIGHT: (0, 6),
-    ApiAttrs.LIGHT_BRIGHTNESS: (0, 6),
+    ApiAttrs.FAN_SPEED: (0, MAX_LEVEL),
+    ApiAttrs.FLAME_HEIGHT: (0, MAX_LEVEL),
+    ApiAttrs.LIGHT_BRIGHTNESS: (0, MAX_LEVEL),
     ApiAttrs.AUXILIARY: (0, 1),
     ApiAttrs.SPLIT_FLOW: (0, 1),
     ApiAttrs.CURRENT_TEMPERATURE: (-1000, 3000),
@@ -95,15 +95,6 @@ ADJUSTABLE_MODES = [
     OperatingMode.THERMOSTAT,
     OperatingMode.WIFI,
 ]
-
-MAX_FAN_SPEED = 6
-MIN_FAN_SPEED = 0
-
-MAX_FLAME_HEIGHT = 6
-MIN_FLAME_HEIGHT = 0
-
-MAX_LIGHT_BRIGHTNESS = 6
-MIN_LIGHT_BRIGHTNESS = 0
 
 # Temperature limits in Celsius.
 MAX_TEMPERATURE = 35

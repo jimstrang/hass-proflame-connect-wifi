@@ -18,7 +18,6 @@ class ProflameEntity(CoordinatorEntity):
         self._device = coordinator.client
         self._attr_device_info = coordinator.device_info
         self._attr_has_entity_name = True
-        self._attr_should_poll = False
         self._attr_unique_id = f"{description.key}_{coordinator.unique_id}"
 
     @property

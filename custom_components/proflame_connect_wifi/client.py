@@ -5,12 +5,7 @@ from homeassistant.exceptions import ServiceValidationError
 from .client_base import ProflameClientBase
 from .const import (
     ADJUSTABLE_MODES,
-    MAX_FAN_SPEED,
-    MAX_FLAME_HEIGHT,
-    MAX_LIGHT_BRIGHTNESS,
-    MIN_FAN_SPEED,
-    MIN_FLAME_HEIGHT,
-    MIN_LIGHT_BRIGHTNESS,
+    MAX_LEVEL,
     ApiAttrs,
     OperatingMode,
     PilotMode,
@@ -27,9 +22,9 @@ class ProflameClient(ProflameClientBase):
     ) -> None:
         """Create new class instance."""
         super().__init__(device_id, host, port, logger, read_only=read_only)
-        self._stored_fan_speed = MAX_FAN_SPEED
-        self._stored_flame = MAX_FLAME_HEIGHT
-        self._stored_light_brightness = MAX_LIGHT_BRIGHTNESS
+        self._stored_fan_speed = MAX_LEVEL
+        self._stored_flame = MAX_LEVEL
+        self._stored_light_brightness = MAX_LEVEL
         self._stored_mode = OperatingMode.MANUAL
         self._stored_mode_adjustable = OperatingMode.MANUAL
         self.register_callback(self._track_state)
@@ -162,7 +157,7 @@ class ProflameClient(ProflameClientBase):
 
     def set_fan_speed(self, speed: int) -> None:
         """Set the desired speed of the fan."""
-        constrained = constrain(speed, MIN_FAN_SPEED, MAX_FAN_SPEED)
+        constrained = constrain(speed, 0, MAX_LEVEL)
         self.set_state(ApiAttrs.FAN_SPEED, constrained)
 
     def set_flame_height(self, height: int) -> None:
@@ -173,14 +168,14 @@ class ProflameClient(ProflameClientBase):
                 "Flame level is controlled automatically in Smart mode. "
                 "Select Manual or Thermostat mode before adjusting it."
             )
-        constrained = constrain(height, MIN_FLAME_HEIGHT, MAX_FLAME_HEIGHT)
+        constrained = constrain(height, 0, MAX_LEVEL)
         self.set_state(ApiAttrs.FLAME_HEIGHT, constrained)
         if constrained > 0 and self.operating_mode not in ADJUSTABLE_MODES:
             self.set_operating_mode(self._stored_mode_adjustable)
 
     def set_light_brightness(self, brightness: int) -> None:
         """Set the brightness of the primary light."""
-        constrained = constrain(brightness, MIN_LIGHT_BRIGHTNESS, MAX_LIGHT_BRIGHTNESS)
+        constrained = constrain(brightness, 0, MAX_LEVEL)
         self.set_state(ApiAttrs.LIGHT_BRIGHTNESS, constrained)
 
     def set_operating_mode(self, mode: OperatingMode) -> None:
@@ -215,18 +210,6 @@ class ProflameClient(ProflameClientBase):
         if self.temperature_unit is None:
             raise ValueError("Cannot set temperature without a reported device unit")
         self.set_state(ApiAttrs.TARGET_TEMPERATURE, int(temperature * 10))
-
-    def turn_off(self):
-        """Turn off full device."""
-        self.set_operating_mode(OperatingMode.OFF)
-
-    def turn_off_fan(self):
-        """Set fan speed to 0."""
-        self.set_fan_speed(0)
-
-    def turn_off_light(self):
-        """Set primary light brightness to 0."""
-        self.set_light_brightness(0)
 
     def turn_on(self):
         """Turn on full device."""

@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import OperatingMode
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
@@ -37,7 +38,7 @@ class ProflamePower(ProflameEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fireplace off."""
-        self._device.turn_off()
+        self._device.set_operating_mode(OperatingMode.OFF)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the fireplace on."""

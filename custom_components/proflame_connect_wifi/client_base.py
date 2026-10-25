@@ -24,6 +24,14 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+class _HostLogger(logging.LoggerAdapter):
+    """Prefix log messages with the fireplace host."""
+
+    def process(self, msg, kwargs):
+        """Add the host prefix."""
+        return f"PF[{self.extra}] {msg}", kwargs
+
+
 class ProflameClientBase:
     """Client used for interacting with Proflame fireplaces."""
 
@@ -50,7 +58,7 @@ class ProflameClientBase:
         self._device_id = device_id
         self._host = host
         self._port = port or DEFAULT_PORT
-        self._logger = logger or _LOGGER
+        self._logger = _HostLogger(logger or _LOGGER, host)
         self._callbacks = []
         self._connection_callbacks = []
 
@@ -84,7 +92,7 @@ class ProflameClientBase:
                     self.uri, ping_interval=None, open_timeout=INITIAL_STATE_TIMEOUT,
                     close_timeout=2, max_size=65536,
                 ) as websocket:
-                    self._debug('Connection opened')
+                    self._logger.debug('Connection opened')
                     self._ws = websocket
                     self._state.clear()
                     self._unknown_state.clear()
@@ -123,13 +131,13 @@ class ProflameClientBase:
                             task.cancel()
                         await asyncio.gather(*tasks, return_exceptions=True)
             except (OSError, TimeoutError, WebSocketException) as err:
-                self._warning('Connection lost: %s', err)
+                self._logger.warning('Connection lost: %s', err)
             finally:
                 self._set_connected(False)
                 self._ws = None
             if not self._auto_reconnect:
                 return
-            self._warning('Reconnecting in %s seconds', RECONNECT_DELAY)
+            self._logger.warning('Reconnecting in %s seconds', RECONNECT_DELAY)
             await asyncio.sleep(RECONNECT_DELAY)
 
     def _set_connected(self, connected: bool) -> None:
@@ -178,7 +186,7 @@ class ProflameClientBase:
             except (OSError, WebSocketException) as err:
                 # Don't retry: the connection is being re-established, and
                 # replaying fireplace commands later could be surprising.
-                self._warning('Failed to send command (%s): %s', item, err)
+                self._logger.warning('Failed to send command (%s): %s', item, err)
                 raise
             finally:
                 self._queue.task_done()
@@ -187,13 +195,13 @@ class ProflameClientBase:
         """Process a system control/info message from the websocket."""
         if message == ApiControl.CONN_ACK:
             self._acknowledged = True
-            self._debug('Connection acknowledged')
+            self._logger.debug('Connection acknowledged')
             return True
         elif message == ApiControl.PONG:
-            self._debug('Ping acknowledged')
+            self._logger.debug('Ping acknowledged')
             return True
         else:
-            self._warning("Received unexpected control message (%s)", message)
+            self._logger.warning("Received unexpected control message (%s)", message)
             return False
 
     def _parse_indexed_format(self, message: dict) -> dict[str, object] | None:
@@ -212,7 +220,7 @@ class ProflameClientBase:
             value_key = f"value{i}"
 
             if not isinstance(attr_name, str) or not attr_name or value_key not in message:
-                self._warning("Ignoring incomplete or invalid indexed field %s", i)
+                self._logger.warning("Ignoring incomplete or invalid indexed field %s", i)
             elif attr_name not in STATE_RANGES:
                 result[attr_name] = message[value_key]
             else:
@@ -232,7 +240,7 @@ class ProflameClientBase:
         """Process a system state message from the websocket."""
         err_msg = "Received unexpected JSON message (%s) - %s"
         if not isinstance(message, dict):
-            self._warning(err_msg, "NOT_AN_OBJECT", json.dumps(message))
+            self._logger.warning(err_msg, "NOT_AN_OBJECT", json.dumps(message))
             return False
 
         # Try to parse indexed format (status0/value0, status1/value1, etc.)
@@ -243,7 +251,7 @@ class ProflameClientBase:
         for key, value in message.items():
             if key not in STATE_RANGES:
                 self._unknown_state[key] = value
-                self._debug('Keeping unknown state field %s internal', key)
+                self._logger.debug('Keeping unknown state field %s internal', key)
                 continue
             low, high = STATE_RANGES[key]
             if (
@@ -251,7 +259,7 @@ class ProflameClientBase:
                 or not low <= value <= high
                 or (key == ApiAttrs.OPERATING_MODE and value == 4)
             ):
-                self._warning('Ignoring invalid state field %s=%r', key, value)
+                self._logger.warning('Ignoring invalid state field %s=%r', key, value)
                 continue
             valid[key] = value
 
@@ -267,7 +275,7 @@ class ProflameClientBase:
     def _handle_message(self, message) -> bool:
         """Process a message from the websocket."""
         if not isinstance(message, str):
-            self._warning("Ignoring non-text WebSocket message")
+            self._logger.warning("Ignoring non-text WebSocket message")
             return False
         try:
             handled = self._handle_json_message(json.loads(message))
@@ -291,9 +299,9 @@ class ProflameClientBase:
             await asyncio.sleep(KEEPALIVE_INTERVAL)
             silence = time.monotonic() - self._last_recv
             if silence > KEEPALIVE_TIMEOUT:
-                self._warning('No response from device in %.0f seconds', silence)
+                self._logger.warning('No response from device in %.0f seconds', silence)
                 return
-            self._debug("SEND: %s", ApiControl.PING)
+            self._logger.debug("SEND: %s", ApiControl.PING)
             await asyncio.wait_for(websocket.send(ApiControl.PING), KEEPALIVE_TIMEOUT)
 
     async def _listener(self, websocket) -> None:
@@ -302,21 +310,21 @@ class ProflameClientBase:
         Connection errors propagate so the connection can be re-established.
         """
         async for message in websocket:
-            self._debug('RECV: %s', message)
+            self._logger.debug('RECV: %s', message)
             if self._handle_message(message):
                 self._last_recv = time.monotonic()
-        self._warning('Connection closed by device')
+        self._logger.warning('Connection closed by device')
 
     async def close(self) -> None:
         """Close the websocket connection."""
-        self._debug('Connection closing')
+        self._logger.debug('Connection closing')
         self._set_connected(False)
         if self._connection:
             self._connection.cancel()
             await asyncio.gather(self._connection, return_exceptions=True)
             self._connection = None
         self._set_connected(False)
-        self._debug('Connection closed')
+        self._logger.debug('Connection closed')
 
     @property
     def connected(self) -> bool:
@@ -329,7 +337,7 @@ class ProflameClientBase:
 
     async def open(self) -> None:
         """Connect to the Proflame websocket."""
-        self._debug('Connection opening')
+        self._logger.debug('Connection opening')
         if self._connection is None or self._connection.done():
             self._connection = asyncio.create_task(self._connect())
             self._connection.add_done_callback(self._connection_done)
@@ -337,7 +345,7 @@ class ProflameClientBase:
     def _connection_done(self, task) -> None:
         """Surface unexpected failures even when nobody is waiting on the client."""
         if not task.cancelled() and (error := task.exception()) is not None:
-            self._error("Connection task failed: %s", error)
+            self._logger.error("Connection task failed: %s", error)
 
     async def wait_for_state(self, timeout: float = INITIAL_STATE_TIMEOUT) -> bool:
         """Wait for state to be received from the device.
@@ -351,8 +359,8 @@ class ProflameClientBase:
         try:
             await asyncio.wait_for(self._state_received.wait(), timeout=timeout)
             return True
-        except asyncio.TimeoutError:
-            self._warning('Timeout waiting for initial state from device')
+        except TimeoutError:
+            self._logger.warning('Timeout waiting for initial state from device')
             return False
 
     def register_callback(self, callback) -> Callable[[], None]:
@@ -391,21 +399,6 @@ class ProflameClientBase:
         if field == ApiAttrs.OPERATING_MODE and value == 4:
             raise ValueError("Unknown Proflame operating mode: 4")
         self._queue.put_nowait({field: value})
-
-    def _debug(self, msg, *args) -> None:
-        """Shortcut for debug logging."""
-        formatted = f"PF[{self._host}] {msg}"
-        self._logger.debug(formatted, *args)
-
-    def _error(self, msg, *args) -> None:
-        """Shortcut for error logging."""
-        formatted = f"PF[{self._host}] {msg}"
-        self._logger.error(formatted, *args)
-
-    def _warning(self, msg, *args) -> None:
-        """Shortcut for warning logging."""
-        formatted = f"PF[{self._host}] {msg}"
-        self._logger.warning(formatted, *args)
 
     @property
     def device_id(self) -> str:

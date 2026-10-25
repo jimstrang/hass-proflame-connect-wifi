@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -10,9 +11,61 @@ from zipfile import ZipFile
 
 import pytest
 import yaml
+from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = "proflame_connect_wifi"
+
+
+def test_ci_covers_minimum_and_latest_stable_ha_weekly():
+    """Keep a pinned support floor and a scheduled, unpinned stable compatibility check."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/lint.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["schedule"] == [{"cron": "0 8 * * 1"}]
+    assert triggers["pull_request"]["branches"] == ["dev"]
+    assert set(triggers["push"]["branches"]) == {"master", "dev"}
+    job = workflow["jobs"]["ruff"]
+    minimum, latest = job["strategy"]["matrix"]["include"]
+    hacs = json.loads((ROOT / "hacs.json").read_text())
+    assert minimum["homeassistant"] == hacs["homeassistant"]
+    assert minimum["requirement"] == f"homeassistant=={hacs['homeassistant']}"
+    assert minimum["requirement"] in (ROOT / "requirements.txt").read_text().splitlines()
+    assert latest["requirement"] == "homeassistant"
+    assert minimum["python"] == latest["python"] == "3.14"
+    steps = {step["name"]: step for step in job["steps"]}
+    assert steps["Set up Python"]["with"]["check-latest"] is True
+    install = steps["Install requirements"]
+    assert install["env"]["HA_REQUIREMENT"] == "${{ matrix.requirement }}"
+    assert shlex.split(install["run"].splitlines()[1]) == [
+        "python3", "-m", "pip", "install", "--upgrade", "$HA_REQUIREMENT",
+    ]
+    assert "Report installed runtime" in steps
+
+
+def test_development_branch_receives_validation_and_dependency_updates():
+    """Validate development PRs and route automated updates away from the release branch."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/validate.yaml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["pull_request"]["branches"] == ["dev"]
+    assert set(triggers["push"]["branches"]) == {"master", "dev"}
+    dependabot = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    assert all(update["target-branch"] == "dev" for update in dependabot["updates"])
+
+
+def test_ci_installs_runtime_requirements_from_manifest():
+    """Install the manifest's runtime pins without duplicating them in development requirements."""
+    manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
+    runtime_names = {Requirement(value).name for value in manifest["requirements"]}
+    development = (ROOT / "requirements.txt").read_text().splitlines()
+    assert runtime_names.isdisjoint(Requirement(value).name for value in development if value.strip())
+    workflow = yaml.safe_load((ROOT / ".github/workflows/lint.yml").read_text())
+    step = next(step for step in workflow["jobs"]["ruff"]["steps"] if step["name"] == "Install requirements")
+    assert step["shell"] == "bash"
+    command = step["run"].splitlines()[-1]
+    reader, installer = command.split(" | ")
+    assert shlex.split(installer) == ["python3", "-m", "pip", "install", "-r", "/dev/stdin"]
+    result = subprocess.run(shlex.split(reader), cwd=ROOT, capture_output=True, text=True, check=True)
+    assert result.stdout.splitlines() == manifest["requirements"]
 
 
 @pytest.fixture

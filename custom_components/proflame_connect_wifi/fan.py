@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import MAX_FAN_SPEED
+from .const import MAX_LEVEL
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
@@ -33,7 +33,7 @@ class ProflameFan(ProflameEntity, FanEntity):
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF
     )
-    _attr_speed_count = MAX_FAN_SPEED
+    _attr_speed_count = MAX_LEVEL
 
     def __init__(self, coordinator: ProflameDataCoordinator) -> None:
         """Create new instance of the ProflameLight class."""
@@ -57,11 +57,11 @@ class ProflameFan(ProflameEntity, FanEntity):
     def percentage(self) -> int | None:
         """Return the current speed percentage."""
         speed = self.fan_speed
-        return None if speed is None else math.floor(speed * (100 / MAX_FAN_SPEED))
+        return None if speed is None else math.floor(speed * (100 / MAX_LEVEL))
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the speed of the fireplace fan."""
-        speed = math.ceil(percentage / (100 / MAX_FAN_SPEED))
+        speed = math.ceil(percentage / (100 / MAX_LEVEL))
         self._device.set_fan_speed(speed)
 
     async def async_turn_on(
@@ -78,4 +78,4 @@ class ProflameFan(ProflameEntity, FanEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fan off."""
-        self._device.turn_off_fan()
+        self._device.set_fan_speed(0)

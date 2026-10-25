@@ -34,13 +34,12 @@ class ProflameDataCoordinator(DataUpdateCoordinator):
             self.client.register_callback(self.handle_state_change),
             self.client.register_connection_callback(self.handle_connection_change),
         ]
-        self.device_name = name
         self.unique_id = re.sub('[^A-Za-z0-9]+', '', client.device_id)
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self.client.device_id)},
             manufacturer='Sit Group',
             model='Generic',
-            name=self.device_name
+            name=name
         )
         if (mac := discovery_mac(self.client.device_id)) is not None:
             self.device_info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
