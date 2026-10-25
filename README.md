@@ -257,6 +257,8 @@ Based on work by [Pharrox](https://github.com/Pharrox/hass-proflame-connect-wifi
 and [jeffrapp](https://github.com/jeffrapp/hass-proflame-connect-wifi), with
 selective fixes informed by
 [jameskorzekwa](https://github.com/jameskorzekwa/hass-proflame-connect-wifi).
+Protocol research also drew on
+[psaab/proflame_c4](https://github.com/psaab/proflame_c4).
 Distributed under the [MIT license](LICENSE).
 
 The linked product logo comes from the Home Assistant brands repository.
