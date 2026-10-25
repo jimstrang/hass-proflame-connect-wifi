@@ -13,6 +13,7 @@ from custom_components.proflame_connect_wifi import client_base
 from custom_components.proflame_connect_wifi.client import ProflameClient
 from custom_components.proflame_connect_wifi.client_base import ProflameClientBase
 from custom_components.proflame_connect_wifi.climate import ProflameClimate
+from custom_components.proflame_connect_wifi.const import OperatingMode
 from custom_components.proflame_connect_wifi.coordinator import ProflameDataCoordinator
 from custom_components.proflame_connect_wifi.fan import ProflameFan
 from custom_components.proflame_connect_wifi.light import ProflameLight
@@ -114,7 +115,7 @@ async def test_read_only_subscription_and_reconnect(monkeypatch, snapshot):
                     await asyncio.sleep(0.001)
             assert client.connected and client.read_only
             with pytest.raises(HomeAssistantError, match="read-only"):
-                client.turn_off()
+                client.set_operating_mode(OperatingMode.OFF)
             assert client._queue.empty()
         finally:
             await client.close()
@@ -151,10 +152,10 @@ async def test_setup_wires_safe_legacy_default(hass, snapshot, configured):
     assert client.read_only is (configured is not False)
     if client.read_only:
         with pytest.raises(HomeAssistantError, match="read-only"):
-            client.turn_off_light()
+            client.set_light_brightness(0)
         assert client._queue.empty()
     else:
-        client.turn_off_light()
+        client.set_light_brightness(0)
         assert client._queue.get_nowait() == {"lamp_control": 0}
         client._queue.task_done()
     assert entry.runtime_data.client is client

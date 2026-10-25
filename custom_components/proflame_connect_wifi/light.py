@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import MAX_LIGHT_BRIGHTNESS
+from .const import MAX_LEVEL
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
@@ -43,7 +43,7 @@ class ProflameLight(ProflameEntity, LightEntity):
         brightness = self._device.light_brightness
         if brightness is None:
             return None
-        return round(brightness * 255 / MAX_LIGHT_BRIGHTNESS)
+        return round(brightness * 255 / MAX_LEVEL)
 
     @property
     def is_on(self) -> bool | None:
@@ -57,7 +57,7 @@ class ProflameLight(ProflameEntity, LightEntity):
         if brightness is None:
             self._device.turn_on_light()
             return
-        converted = max(1, round(brightness * MAX_LIGHT_BRIGHTNESS / 255)) if brightness else 0
+        converted = max(1, round(brightness * MAX_LEVEL / 255)) if brightness else 0
         self._device.set_light_brightness(converted)
 
     async def async_turn_off(self, **kwargs: Any) -> None:

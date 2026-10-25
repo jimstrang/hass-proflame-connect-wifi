@@ -43,16 +43,7 @@ def build_user_schema(user_input: dict[str, Any] | None = None):
 
 def resolve_ip(host) -> str:
     """Do DNS resolution for a host to store the IP and prevent duplicate entries."""
-    return [x[4][0] for x in socket.getaddrinfo(
-        host=host,
-        port=None,
-        proto=6,
-    )][0]
-
-
-async def test_connectivity(host: str, port: int = DEFAULT_PORT) -> bool:
-    """Validate fireplace is connectable."""
-    return await ProflameClient.test_connection(host, port)
+    return socket.getaddrinfo(host, None, proto=6)[0][4][0]
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -102,7 +93,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except OSError as err:
             _LOGGER.warning("Cannot resolve Proflame host %s: %s", host, err)
             return None
-        if not await test_connectivity(host, port):
+        if not await ProflameClient.test_connection(host, port):
             return None
         return ip
 
@@ -175,7 +166,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_in_progress")
 
         # "espressif" is not specific to Proflame hardware.
-        if not await test_connectivity(discovery_info.ip, DEFAULT_PORT):
+        if not await ProflameClient.test_connection(discovery_info.ip, DEFAULT_PORT):
             return self.async_abort(reason="not_proflame_device")
 
         return await self.async_step_discovery_confirm()
