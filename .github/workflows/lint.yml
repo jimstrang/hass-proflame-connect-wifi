@@ -3,6 +3,8 @@ name: "Lint"
 on:
   workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
   push:
     branches:
       - "master"
@@ -22,9 +24,11 @@ jobs:
       matrix:
         include:
           - homeassistant: "2026.10.2"
-            python: "3.14.6"
-          - homeassistant: "2026.10.3"
-            python: "3.14.9"
+            requirement: "homeassistant==2026.10.2"
+            python: "3.14"
+          - homeassistant: "latest"
+            requirement: "homeassistant"
+            python: "3.14"
     steps:
         - name: "Checkout the repository"
           uses: "actions/checkout@v4.1.0"
@@ -33,14 +37,22 @@ jobs:
           uses: actions/setup-python@v4.7.1
           with:
             python-version: "${{ matrix.python }}"
+            check-latest: true
             cache: "pip"
 
         - name: "Install requirements"
           shell: bash
+          env:
+            HA_REQUIREMENT: "${{ matrix.requirement }}"
           run: |
             python3 -m pip install -r requirements.txt
-            python3 -m pip install "homeassistant==${{ matrix.homeassistant }}"
+            python3 -m pip install --upgrade "$HA_REQUIREMENT"
             python3 -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | python3 -m pip install -r /dev/stdin
+
+        - name: "Report installed runtime"
+          run: |
+            python3 --version
+            python3 -m pip show homeassistant
 
         - name: "Run"
           run: python3 -m ruff check .

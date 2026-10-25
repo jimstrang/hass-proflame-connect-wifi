@@ -17,6 +17,30 @@ ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = "proflame_connect_wifi"
 
 
+def test_ci_covers_minimum_and_latest_stable_ha_weekly():
+    """Keep a pinned support floor and a scheduled, unpinned stable compatibility check."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/lint.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["schedule"] == [{"cron": "0 8 * * 1"}]
+    assert "pull_request" in triggers
+    job = workflow["jobs"]["ruff"]
+    minimum, latest = job["strategy"]["matrix"]["include"]
+    hacs = json.loads((ROOT / "hacs.json").read_text())
+    assert minimum["homeassistant"] == hacs["homeassistant"]
+    assert minimum["requirement"] == f"homeassistant=={hacs['homeassistant']}"
+    assert minimum["requirement"] in (ROOT / "requirements.txt").read_text().splitlines()
+    assert latest["requirement"] == "homeassistant"
+    assert minimum["python"] == latest["python"] == "3.14"
+    steps = {step["name"]: step for step in job["steps"]}
+    assert steps["Set up Python"]["with"]["check-latest"] is True
+    install = steps["Install requirements"]
+    assert install["env"]["HA_REQUIREMENT"] == "${{ matrix.requirement }}"
+    assert shlex.split(install["run"].splitlines()[1]) == [
+        "python3", "-m", "pip", "install", "--upgrade", "$HA_REQUIREMENT",
+    ]
+    assert "Report installed runtime" in steps
+
+
 def test_ci_installs_runtime_requirements_from_manifest():
     """Install the manifest's runtime pins without duplicating them in development requirements."""
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())

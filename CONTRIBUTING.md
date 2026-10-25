@@ -11,39 +11,43 @@ device and entity identities. Contributions use the [MIT license](LICENSE).
 
 Use an isolated environment, not your running Home Assistant installation.
 Keep editor settings and any local Home Assistant configuration out of Git.
-CI tests these runtime pairs:
+CI tests these compatibility targets on pull requests, pushes to `master`, and
+weekly:
 
 | Home Assistant | Python |
 | --- | --- |
-| 2026.10.2 | 3.14.6 |
-| 2026.10.3 | 3.14.9 |
+| Minimum supported: 2026.10.2 | Latest 3.14 patch |
+| Latest stable from PyPI | Latest 3.14 patch |
 
 Install dependencies and run the baseline checks:
 
 ```bash
 set -o pipefail
-uv venv .venv --python 3.14.6
+uv venv .venv --python 3.14
 uv pip install --python .venv/bin/python -r requirements.txt
 .venv/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv/bin/python -r /dev/stdin
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check .
 ```
 
-Test the newer runtime separately:
+Test latest stable separately:
 
 ```bash
 set -o pipefail
-uv venv .venv-current --python 3.14.9
+uv venv .venv-current --python 3.14
 uv pip install --python .venv-current/bin/python -r requirements.txt
-uv pip install --python .venv-current/bin/python homeassistant==2026.10.3
+uv pip install --python .venv-current/bin/python --upgrade homeassistant
 .venv-current/bin/python -c 'import json; from pathlib import Path; print("\n".join(json.loads(Path("custom_components/proflame_connect_wifi/manifest.json").read_text())["requirements"]))' | uv pip install --python .venv-current/bin/python -r /dev/stdin
 .venv-current/bin/python -m pytest -q
 .venv-current/bin/ruff check .
 ```
 
-Standard `venv` and `pip` also work. If uv cannot download the required Python
-patch release, pass the path to an installed interpreter with `--python`.
-Testing an older Python patch does not cover the runtime listed above.
+Standard `venv` and `pip` also work. CI logs the installed HA and Python versions;
+the latest target excludes prereleases. Passing tests establish offline
+compatibility, not verified hardware behavior.
+
+Update CI's Python target when HA changes its required Python minor version;
+pip otherwise selects the newest HA compatible with the older interpreter.
 
 Runtime dependencies are pinned only in the integration's `manifest.json`.
 The commands above install those pins after the development requirements and HA.
