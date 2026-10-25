@@ -12,12 +12,9 @@
       }
     ],
     "documentation": "https://github.com/jimstrang/hass-proflame-connect-wifi",
-    "homekit": {},
     "integration_type": "device",
     "iot_class": "local_push",
     "issue_tracker": "https://github.com/jimstrang/hass-proflame-connect-wifi/issues",
     "requirements": ["websockets==16.0"],
-    "ssdp": [],
-    "version": "1.0.0-beta.1",
-    "zeroconf": []
+    "version": "1.0.0-beta.1"
   }

@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import MAX_FLAME_HEIGHT, MIN_FLAME_HEIGHT
+from .const import MAX_LEVEL
 from .coordinator import ProflameDataCoordinator
 from .entity import ProflameEntity
 
@@ -25,8 +25,8 @@ async def async_setup_entry(
 class ProflameFlame(ProflameEntity, NumberEntity):
     """Creates a device to control fireplace lights."""
 
-    _attr_native_max_value: float = MAX_FLAME_HEIGHT
-    _attr_native_min_value: float = MIN_FLAME_HEIGHT
+    _attr_native_max_value: float = MAX_LEVEL
+    _attr_native_min_value: float = 0
     _attr_native_step: float = 1
     _attr_mode: NumberMode = NumberMode.SLIDER
 
