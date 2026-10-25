@@ -15,10 +15,10 @@ venv
 # misc
 .coverage
 coverage.xml
+.vscode/
 
 # Home Assistant configuration
-config/*
-!config/configuration.yaml
+config/
 
 .DS_Store
 __MACOSX/

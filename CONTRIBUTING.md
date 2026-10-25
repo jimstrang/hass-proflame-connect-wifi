@@ -10,6 +10,7 @@ device and entity identities. Contributions use the [MIT license](LICENSE).
 ## Development setup
 
 Use an isolated environment, not your running Home Assistant installation.
+Keep editor settings and any local Home Assistant configuration out of Git.
 CI tests these runtime pairs:
 
 | Home Assistant | Python |
