@@ -1,8 +1,9 @@
 # Contributing
 
 Open an issue before changing control behavior, supported modes, or protocol
-assumptions. Fork the repository, create a branch from `master`, and submit a
-focused pull request with tests and any necessary documentation updates.
+assumptions. Fork the repository, create a branch from `dev`, and submit a
+focused pull request into `dev` with tests and any necessary documentation
+updates. `dev` holds unreleased changes; `master` receives reviewed releases.
 
 Follow the existing code style. Preserve the integration domain and existing
 device and entity identities. Contributions use the [MIT license](LICENSE).
@@ -11,8 +12,8 @@ device and entity identities. Contributions use the [MIT license](LICENSE).
 
 Use an isolated environment, not your running Home Assistant installation.
 Keep editor settings and any local Home Assistant configuration out of Git.
-CI tests these compatibility targets on pull requests, pushes to `master`, and
-weekly:
+CI tests these compatibility targets on pull requests and pushes to `dev` and
+`master`. Weekly checks run on the default branch, `master`:
 
 | Home Assistant | Python |
 | --- | --- |
@@ -51,8 +52,9 @@ pip otherwise selects the newest HA compatible with the older interpreter.
 
 Runtime dependencies are pinned only in the integration's `manifest.json`.
 The commands above install those pins after the development requirements and HA.
-Dependabot updates development requirements and GitHub Actions weekly; review
-runtime dependency updates manually in the manifest and test both runtime pairs.
+Dependabot opens weekly development dependency and GitHub Actions updates into
+`dev`; review runtime dependency updates manually in the manifest and test both
+runtime pairs.
 
 ## Tests and pull requests
 
@@ -130,17 +132,21 @@ not change the manifest version.
 
 To release:
 
-1. Open a separate release PR that bumps
-   `custom_components/proflame_connect_wifi/manifest.json` and describes the
-   included changes and upgrade notes.
+1. Finish the changes on `dev`, then bump
+   `custom_components/proflame_connect_wifi/manifest.json` in a separate commit.
+   Open a `dev` to `master` release PR describing the included changes and
+   upgrade notes.
 2. Use SemVer without a `v` prefix or build metadata, for example
-   `1.1.0-beta.3`. A prerelease suffix produces a GitHub prerelease.
+   `1.0.0-beta.2`. A prerelease suffix produces a GitHub prerelease.
 3. Wait for both runtime test jobs, HACS validation, and Hassfest to pass.
-4. Merge to `master`. The version change triggers the Release workflow, which
-   runs validation again before publishing.
+4. Merge to `master` with a merge commit, not squash or rebase. The version
+   change triggers the Release workflow, which runs validation again before
+   publishing.
 5. Verify the published tag, release notes, and `proflame_connect_wifi.zip`.
    The ZIP must contain the runtime files and license at its root, with a
    manifest matching the tagged source.
+6. Keep `dev` and merge `master` back into it before starting the next cycle.
+   Shared history prevents earlier changes from reappearing in release PRs.
 
 Other manifest edits do not trigger publication. The trigger compares versions
 on pushes to `master`; do not bypass release review with a direct version bump.
