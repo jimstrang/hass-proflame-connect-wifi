@@ -140,9 +140,67 @@ def test_release_uses_checked_in_version_and_exact_commit(release_steps):
     assert release["tag_name"] == "${{ steps.version.outputs.tag }}"
     assert release["target_commitish"] == "${{ github.sha }}"
     assert release["prerelease"] == "${{ steps.version.outputs.prerelease == 'true' }}"
-    assert release["generate_release_notes"] is True
+    assert release["generate_release_notes"] is False
     assert "RF-initiated" in release["body"]
     assert "Read-only" in release["body"]
+    assert "${{ steps.notes.outputs.summary }}" in release["body"]
+
+
+@pytest.mark.parametrize("previous", [False, True])
+@pytest.mark.parametrize("change", [False, True])
+@pytest.mark.parametrize("account", [None, {"login": "contributor"}])
+def test_release_notes_from_commit_history(
+    release_steps, tmp_path, monkeypatch, previous, change, account,
+):
+    """Read actual Git history, excluding merges, version bookkeeping and older releases."""
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=tmp_path, text=True).strip()
+
+    git("init", "-q")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    git("commit", "--allow-empty", "-m", "Initial work")
+    if previous:
+        git("tag", "v1.0.0-beta.2")
+    if change:
+        git("checkout", "-b", "feature")
+        git("commit", "--allow-empty", "-m", "refactor: use aiohttp [transport]")
+        git("checkout", "-")
+        git("merge", "--no-ff", "feature", "-m", "Merge feature")
+    git("commit", "--allow-empty", "-m", "chore: prepare release 1.0.0-beta.3")
+    git("tag", "v1.0.0-beta.3")
+    sha = git("rev-parse", "HEAD")
+    output = tmp_path / "output"
+    original = subprocess.check_output
+
+    def response(command, **kwargs):
+        if command[0] == "gh":
+            assert command[:2] == ["gh", "api"]
+            assert command[2].startswith("repos/example/integration/commits/")
+            return json.dumps({"author": account})
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "check_output", response)
+    monkeypatch.chdir(tmp_path)
+    for key, value in {
+        "GITHUB_SHA": sha, "GITHUB_REPOSITORY": "example/integration",
+        "GITHUB_OUTPUT": str(output), "RELEASE_TAG": "v1.0.0-beta.3",
+    }.items():
+        monkeypatch.setenv(key, value)
+    exec(compile(release_steps["Generate commit release notes"]["run"], "<release-notes>", "exec"), {})
+    lines = output.read_text().splitlines()
+    delimiter = lines[0].split("<<")[1]
+    assert lines[-1] == delimiter
+    notes = "\n".join(lines[1:-1])
+    assert notes.startswith("## What's Changed\n")
+    assert ("refactor: use aiohttp \\[transport\\]" in notes) is change
+    assert ("Initial work" in notes) is (not previous)
+    assert "Merge feature" not in notes
+    assert "chore: prepare release" not in notes
+    if change or not previous:
+        assert ("by @contributor" if account else "by Test") in notes
+    assert ("No non-merge changes" in notes) is (previous and not change)
+    assert "/compare/v1.0.0-beta.2...v1.0.0-beta.3" in notes if previous else "/commits/v1.0.0-beta.3" in notes
 
 
 def test_release_requires_version_change_or_manual_confirmation_and_validation():

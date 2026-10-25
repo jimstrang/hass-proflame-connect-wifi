@@ -140,6 +140,55 @@ jobs:
                       package.write(path, path.relative_to(integration))
               package.write(workspace / "LICENSE", "LICENSE")
           PY
+      - name: Generate commit release notes
+        id: notes
+        shell: python
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import uuid
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          sha = os.environ["GITHUB_SHA"]
+          url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
+          current_tag = os.environ["RELEASE_TAG"]
+          tags = set(git("tag", "--merged", sha, "--list", "v[0-9]*").splitlines()) - {current_tag}
+          previous = git(
+              "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*",
+              "--exclude", current_tag, sha,
+          ) if tags else None
+          revision = f"{previous}..{sha}" if previous else sha
+          commits = git("log", "--reverse", "--no-merges", "--format=%H%x09%an%x09%s", revision)
+          lines = ["## What's Changed", ""]
+          for commit in commits.splitlines():
+              commit_sha, author_name, subject = commit.split("\t", 2)
+              if re.fullmatch(r"chore: prepare release \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", subject):
+                  continue
+              subject = re.sub(r"([\\`*_\[\]<>])", r"\\\1", subject)
+              metadata = json.loads(subprocess.check_output([
+                  "gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/commits/{commit_sha}",
+              ], text=True))
+              account = metadata["author"]
+              author = f"@{account['login']}" if account else re.sub(
+                  r"([\\`*_\[\]<>@])", r"\\\1", author_name,
+              )
+              lines.append(f"- {subject} ([{commit_sha[:7]}]({url}/commit/{commit_sha})) by {author}")
+          if len(lines) == 2:
+              lines.append("- No non-merge changes beyond release preparation.")
+          comparison = f"{url}/compare/{previous}...{current_tag}" if previous else f"{url}/commits/{current_tag}"
+          lines.extend(["", f"**Full Changelog**: {comparison}"])
+          summary = "\n".join(lines)
+          delimiter = uuid.uuid4().hex
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"summary<<{delimiter}\n{summary}\n{delimiter}\n")
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
@@ -147,13 +196,15 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Proflame Connect WiFi ${{ steps.version.outputs.version }}
           prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
             Read-only mode is enabled by default, including for existing entries without an explicit access setting. Setting actions fail with a read-only error until editing is explicitly enabled through Reconfigure.
 
             Editable mode does not override RF-initiated operation. Attended tests found that Wi-Fi Off and the official app's Off could echo Off while the main burner continued burning. Do not rely on timer or presence automations to extinguish an RF-started fireplace.
 
             Review the README's experimental status and validation limits before installing. This release does not claim safety-rated shutdown or confirmed burner telemetry.
+
+            ${{ steps.notes.outputs.summary }}
           files: ${{ runner.temp }}/proflame_connect_wifi.zip
           fail_on_unmatched_files: true
           draft: false

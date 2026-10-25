@@ -157,9 +157,6 @@ A manually confirmed Release dispatch on `master` is available for recovering
 an interrupted release, with the same checks and tag protection. Use Lint or
 Validate for standalone CI checks; do not dispatch Release just to test it.
 
-GitHub generates release notes from merged PRs, contributors, and a changelog
-link. Include meaningful descriptions and upgrade notes in PRs.
-
 ## HACS packaging
 
 Keep all runtime files under `custom_components/proflame_connect_wifi/`.
