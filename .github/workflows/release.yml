@@ -2,13 +2,13 @@ name: Release
 
 on:
   push:
-    branches: [master]
+    branches: [dev, master]
     paths:
       - custom_components/proflame_connect_wifi/manifest.json
   workflow_dispatch:
     inputs:
       confirm_publish:
-        description: "Publish a release after validation (master only)"
+        description: "Publish after validation (dev prerelease or master stable)"
         type: boolean
         required: true
         default: false
@@ -45,20 +45,27 @@ jobs:
           import subprocess
 
           publish = False
-          if os.environ["GITHUB_REF"] == "refs/heads/master":
+          ref = os.environ["GITHUB_REF"]
+          manifest = "custom_components/proflame_connect_wifi/manifest.json"
+          if ref in {"refs/heads/dev", "refs/heads/master"}:
               event = os.environ["GITHUB_EVENT_NAME"]
               if event == "workflow_dispatch":
                   publish = os.environ.get("CONFIRM_PUBLISH") == "true"
               elif event == "push":
                   before = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())["before"]
                   if re.fullmatch(r"[0-9a-f]{40}", before) is None or before == "0" * 40:
-                      raise ValueError("A valid previous master commit is required")
-                  manifest = "custom_components/proflame_connect_wifi/manifest.json"
+                      raise ValueError("A valid previous branch commit is required")
                   previous = json.loads(subprocess.check_output(
                       ["git", "show", f"{before}:{manifest}"], text=True,
                   ))["version"]
                   current = json.loads(Path(manifest).read_text())["version"]
                   publish = current != previous
+          if publish:
+              version = json.loads(Path(manifest).read_text())["version"]
+              if not isinstance(version, str):
+                  raise ValueError("Manifest version must be a string")
+              if ("-" in version) != (ref == "refs/heads/dev"):
+                  raise ValueError("dev requires a prerelease version; master requires a stable version")
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
               output.write(f"publish={'true' if publish else 'false'}\n")
   tests:
@@ -74,7 +81,7 @@ jobs:
   release:
     name: Release
     needs: [prepare, tests, validation]
-    if: github.ref == 'refs/heads/master' && needs.prepare.outputs.publish == 'true'
+    if: (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master') && needs.prepare.outputs.publish == 'true'
     runs-on: "ubuntu-latest"
     permissions:
       contents: write
@@ -146,6 +153,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
+          INITIAL_RELEASE_BASELINE: 2d18c035ab908afb01b603ff37598f00eb68335a
         run: |
           import json
           import os
@@ -161,10 +169,17 @@ jobs:
           url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
           current_tag = os.environ["RELEASE_TAG"]
           tags = set(git("tag", "--merged", sha, "--list", "v[0-9]*").splitlines()) - {current_tag}
+          stable = "-" not in current_tag
+          if stable:
+              tags = {tag for tag in tags if "-" not in tag}
           previous = git(
-              "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*",
+              "describe", "--tags", "--abbrev=0",
+              *(arg for tag in sorted(tags) for arg in ("--match", tag)),
               "--exclude", current_tag, sha,
           ) if tags else None
+          if stable and previous is None:
+              previous = os.environ["INITIAL_RELEASE_BASELINE"]
+              subprocess.run(["git", "merge-base", "--is-ancestor", previous, sha], check=True)
           revision = f"{previous}..{sha}" if previous else sha
           commits = git("log", "--reverse", "--no-merges", "--format=%H%x09%an%x09%s", revision)
           lines = ["## What's Changed", ""]

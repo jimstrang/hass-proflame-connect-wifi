@@ -129,31 +129,41 @@ metadata before sharing them, and keep raw captures out of Git.
 Keep code changes and release preparation separate. Feature and fix PRs should
 not change the manifest version.
 
-To release:
+### Prereleases from dev
 
-1. Finish the changes on `dev`, then bump
-   `custom_components/proflame_connect_wifi/manifest.json` in a separate commit.
-   Open a `dev` to `master` release PR describing the included changes and
-   upgrade notes.
-2. Use SemVer without a `v` prefix or build metadata, for example
-   `1.0.0-beta.2`. A prerelease suffix produces a GitHub prerelease.
-3. Wait for both runtime test jobs, HACS validation, and Hassfest to pass.
-4. Merge to `master` with a merge commit, not squash or rebase. The version
-   change triggers the Release workflow, which runs validation again before
-   publishing.
-5. Verify the published tag, release notes, and `proflame_connect_wifi.zip`.
-   The ZIP must contain the runtime files and license at its root, with a
-   manifest matching the tagged source.
-6. Keep `dev` and merge `master` back into it before starting the next cycle.
-   Shared history prevents earlier changes from reappearing in release PRs.
+Finish the changes on `dev`, then bump
+`custom_components/proflame_connect_wifi/manifest.json` in a separate commit,
+for example to `1.0.0-beta.4`. Pushing that version change to `dev` runs both HA
+test targets, HACS validation, and Hassfest before publishing a prerelease.
+Normal commits and contributor PR merges without a version change do not publish.
+
+### Stable releases from master
+
+When ready for a stable release, remove the prerelease suffix on `dev` in a
+separate preparation commit, for example `1.0.0`. That commit deliberately fails
+the dev publication gate: stable versions cannot publish from `dev`.
+Open a `dev` to `master` PR with the included changes and upgrade notes. Wait
+for the four required CI checks and review, then use a merge commit, not squash
+or rebase. The version change on `master` runs release validation and publishes
+the stable release. Prerelease versions cannot publish from `master`.
+
+Keep `dev` and merge `master` back into it before starting the next cycle.
+The next development prerelease must use a new version, such as `1.0.1-beta.1`.
+
+Use SemVer without a `v` prefix or build metadata. Verify the published tag,
+release notes, and `proflame_connect_wifi.zip`. The ZIP must contain the runtime
+files and license at its root, with a manifest matching the tagged source.
+Beta notes cover changes since the previous release; stable notes include all
+changes since the previous stable release. The first stable release starts from
+the original upstream baseline rather than listing inherited history.
 
 Other manifest edits do not trigger publication. The trigger compares versions
-on pushes to `master`; do not bypass release review with a direct version bump.
+on pushes to `dev` or `master`; do not bypass stable-release review.
 The workflow packages the exact validated commit and refuses an existing tag.
 Keep historical tags unchanged and do not backfill old releases with current
 files.
 
-A manually confirmed Release dispatch on `master` is available for recovering
+A manually confirmed Release dispatch on either release branch is available for recovering
 an interrupted release, with the same checks and tag protection. Use Lint or
 Validate for standalone CI checks; do not dispatch Release just to test it.
 
