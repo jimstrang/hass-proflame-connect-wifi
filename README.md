@@ -47,9 +47,8 @@ Or add it manually:
 2. Select the three-dot menu, then **Custom repositories**.
 3. Add `https://github.com/jimstrang/hass-proflame-connect-wifi` with type
    **Integration**.
-4. Find **Proflame Connect WiFi**, select a release, and download it.
-   For an evaluation version such as `1.1.0-beta.1`, use the version selector
-   to choose the release marked as a prerelease, rather than a commit ID.
+4. Find **Proflame Connect WiFi**, select the latest stable release, and download it.
+   To test a beta, use the version selector to choose a prerelease instead.
 5. Restart Home Assistant during a suitable maintenance window.
 6. Continue with [Configuration](#configuration).
 
