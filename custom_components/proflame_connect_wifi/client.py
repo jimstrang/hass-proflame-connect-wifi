@@ -1,6 +1,7 @@
 """Provides high level abstractions for interacting with Proflame fireplaces."""
 from aiohttp import ClientSession
-from homeassistant.components.climate import HVACAction, HVACMode, UnitOfTemperature
+from homeassistant.components.climate import HVACAction, HVACMode
+from homeassistant.const import UnitOfTemperature
 from homeassistant.exceptions import ServiceValidationError
 
 from .client_base import ProflameClientBase

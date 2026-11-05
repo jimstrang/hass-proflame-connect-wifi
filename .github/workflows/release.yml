@@ -2,13 +2,13 @@ name: Release
 
 on:
   push:
-    branches: [master]
+    branches: [dev, master]
     paths:
       - custom_components/proflame_connect_wifi/manifest.json
   workflow_dispatch:
     inputs:
       confirm_publish:
-        description: "Publish a release after validation (master only)"
+        description: "Publish after validation (dev prerelease or master stable)"
         type: boolean
         required: true
         default: false
@@ -45,20 +45,34 @@ jobs:
           import subprocess
 
           publish = False
-          if os.environ["GITHUB_REF"] == "refs/heads/master":
+          ref = os.environ["GITHUB_REF"]
+          manifest = "custom_components/proflame_connect_wifi/manifest.json"
+          if ref in {"refs/heads/dev", "refs/heads/master"}:
               event = os.environ["GITHUB_EVENT_NAME"]
               if event == "workflow_dispatch":
                   publish = os.environ.get("CONFIRM_PUBLISH") == "true"
               elif event == "push":
                   before = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())["before"]
                   if re.fullmatch(r"[0-9a-f]{40}", before) is None or before == "0" * 40:
-                      raise ValueError("A valid previous master commit is required")
-                  manifest = "custom_components/proflame_connect_wifi/manifest.json"
+                      raise ValueError("A valid previous branch commit is required")
                   previous = json.loads(subprocess.check_output(
                       ["git", "show", f"{before}:{manifest}"], text=True,
                   ))["version"]
                   current = json.loads(Path(manifest).read_text())["version"]
                   publish = current != previous
+          if publish:
+              version = json.loads(Path(manifest).read_text())["version"]
+              if not isinstance(version, str):
+                  raise ValueError("Manifest version must be a string")
+              if ("-" in version) != (ref == "refs/heads/dev"):
+                  if (
+                      ref == "refs/heads/dev" and os.environ["GITHUB_EVENT_NAME"] == "push"
+                      and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)
+                  ):
+                      print("::notice::Stable release preparation on dev; publication waits for master.")
+                      publish = False
+                  else:
+                      raise ValueError("dev requires a prerelease version; master requires a stable version")
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
               output.write(f"publish={'true' if publish else 'false'}\n")
   tests:
@@ -74,7 +88,7 @@ jobs:
   release:
     name: Release
     needs: [prepare, tests, validation]
-    if: github.ref == 'refs/heads/master' && needs.prepare.outputs.publish == 'true'
+    if: (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master') && needs.prepare.outputs.publish == 'true'
     runs-on: "ubuntu-latest"
     permissions:
       contents: write
@@ -140,6 +154,63 @@ jobs:
                       package.write(path, path.relative_to(integration))
               package.write(workspace / "LICENSE", "LICENSE")
           PY
+      - name: Generate commit release notes
+        id: notes
+        shell: python
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          INITIAL_RELEASE_BASELINE: 2d18c035ab908afb01b603ff37598f00eb68335a
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import uuid
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          sha = os.environ["GITHUB_SHA"]
+          url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
+          current_tag = os.environ["RELEASE_TAG"]
+          tags = set(git("tag", "--merged", sha, "--list", "v[0-9]*").splitlines()) - {current_tag}
+          stable = "-" not in current_tag
+          if stable:
+              tags = {tag for tag in tags if "-" not in tag}
+          previous = git(
+              "describe", "--tags", "--abbrev=0",
+              *(arg for tag in sorted(tags) for arg in ("--match", tag)),
+              "--exclude", current_tag, sha,
+          ) if tags else None
+          if stable and previous is None:
+              previous = os.environ["INITIAL_RELEASE_BASELINE"]
+              subprocess.run(["git", "merge-base", "--is-ancestor", previous, sha], check=True)
+          revision = f"{previous}..{sha}" if previous else sha
+          commits = git("log", "--reverse", "--no-merges", "--format=%H%x09%an%x09%s", revision)
+          lines = ["## What's Changed", ""]
+          for commit in commits.splitlines():
+              commit_sha, author_name, subject = commit.split("\t", 2)
+              if re.fullmatch(r"chore: prepare release \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", subject):
+                  continue
+              subject = re.sub(r"([\\`*_\[\]<>])", r"\\\1", subject)
+              metadata = json.loads(subprocess.check_output([
+                  "gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/commits/{commit_sha}",
+              ], text=True))
+              account = metadata["author"]
+              author = f"@{account['login']}" if account else re.sub(
+                  r"([\\`*_\[\]<>@])", r"\\\1", author_name,
+              )
+              lines.append(f"- {subject} ([{commit_sha[:7]}]({url}/commit/{commit_sha})) by {author}")
+          if len(lines) == 2:
+              lines.append("- No non-merge changes beyond release preparation.")
+          comparison = f"{url}/compare/{previous}...{current_tag}" if previous else f"{url}/commits/{current_tag}"
+          lines.extend(["", f"**Full Changelog**: {comparison}"])
+          summary = "\n".join(lines)
+          delimiter = uuid.uuid4().hex
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"summary<<{delimiter}\n{summary}\n{delimiter}\n")
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
@@ -147,13 +218,15 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Proflame Connect WiFi ${{ steps.version.outputs.version }}
           prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
             Read-only mode is enabled by default, including for existing entries without an explicit access setting. Setting actions fail with a read-only error until editing is explicitly enabled through Reconfigure.
 
             Editable mode does not override RF-initiated operation. Attended tests found that Wi-Fi Off and the official app's Off could echo Off while the main burner continued burning. Do not rely on timer or presence automations to extinguish an RF-started fireplace.
 
             Review the README's experimental status and validation limits before installing. This release does not claim safety-rated shutdown or confirmed burner telemetry.
+
+            ${{ steps.notes.outputs.summary }}
           files: ${{ runner.temp }}/proflame_connect_wifi.zip
           fail_on_unmatched_files: true
           draft: false

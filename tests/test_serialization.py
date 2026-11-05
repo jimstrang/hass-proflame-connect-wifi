@@ -2,6 +2,8 @@
 import pytest
 
 from homeassistant.components.climate.services import _async_service_temperature_set
+from homeassistant.components.climate import ClimateEntity
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
@@ -67,6 +69,39 @@ async def test_ha_converts_temperature_once(hass, client, unit, ha_units, reques
     )
     assert drain(client) == [{"temperature_set": encoded}]
     await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("unit,ha_units,display_current,display_target", [
+    (0, METRIC_SYSTEM, 20, 21),
+    (0, US_CUSTOMARY_SYSTEM, 68, 70),
+    (1, METRIC_SYSTEM, 20, 21.1),
+    (1, US_CUSTOMARY_SYSTEM, 68, 70),
+])
+async def test_ha_temperature_rendering_and_native_unit_bridge(
+    hass, client, unit, ha_units, display_current, display_target,
+):
+    """Let real HA render native device values, including Core 11's legacy-property bridge."""
+    hass.config.units = ha_units
+    native_current, native_target = (20, 21) if unit == 0 else (68, 70)
+    client._handle_json_message({
+        "temperature_unit": unit, "main_mode": 2,
+        "room_temperature": native_current * 10, "temperature_set": native_target * 10,
+    })
+    coordinator = ProflameDataCoordinator(hass, client, "Fireplace")
+    try:
+        climate = ProflameClimate(coordinator)
+        climate.hass = hass
+        attributes = climate.state_attributes
+        assert attributes["current_temperature"] == display_current
+        assert attributes["temperature"] == display_target
+        expected_unit = UnitOfTemperature.CELSIUS if unit == 0 else UnitOfTemperature.FAHRENHEIT
+        if hasattr(ClimateEntity, "native_temperature_unit"):
+            assert climate.native_temperature_unit == expected_unit
+            assert climate.native_current_temperature == native_current
+            assert climate.native_target_temperature == native_target
+        assert drain(client) == []
+    finally:
+        await coordinator.async_shutdown()
 
 
 async def test_preset_options_and_dispatch_use_existing_enum(hass, client):

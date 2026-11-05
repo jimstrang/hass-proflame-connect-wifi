@@ -140,9 +140,80 @@ def test_release_uses_checked_in_version_and_exact_commit(release_steps):
     assert release["tag_name"] == "${{ steps.version.outputs.tag }}"
     assert release["target_commitish"] == "${{ github.sha }}"
     assert release["prerelease"] == "${{ steps.version.outputs.prerelease == 'true' }}"
-    assert release["generate_release_notes"] is True
+    assert release["generate_release_notes"] is False
     assert "RF-initiated" in release["body"]
     assert "Read-only" in release["body"]
+    assert "${{ steps.notes.outputs.summary }}" in release["body"]
+
+
+@pytest.mark.parametrize("previous", [False, True])
+@pytest.mark.parametrize("change", [False, True])
+@pytest.mark.parametrize("account", [None, {"login": "contributor"}])
+@pytest.mark.parametrize("stable", [False, True])
+def test_release_notes_from_commit_history(
+    release_steps, tmp_path, monkeypatch, previous, change, account, stable,
+):
+    """Read actual Git history, excluding merges, version bookkeeping and older releases."""
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=tmp_path, text=True).strip()
+
+    git("init", "-q")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    git("commit", "--allow-empty", "-m", "Initial work")
+    baseline = git("rev-parse", "HEAD")
+    previous_tag = "v0.9.0" if stable else "v1.0.0-beta.2"
+    current_tag = "v1.0.0" if stable else "v1.0.0-beta.3"
+    if previous:
+        git("tag", previous_tag)
+    if stable:
+        git("commit", "--allow-empty", "-m", "feat: work shipped in beta")
+        git("tag", "v1.0.0-beta.2")
+    if change:
+        git("checkout", "-b", "feature")
+        git("commit", "--allow-empty", "-m", "refactor: use aiohttp [transport]")
+        git("checkout", "-")
+        git("merge", "--no-ff", "feature", "-m", "Merge feature")
+    git("commit", "--allow-empty", "-m", f"chore: prepare release {current_tag[1:]}")
+    git("tag", current_tag)
+    sha = git("rev-parse", "HEAD")
+    output = tmp_path / "output"
+    original = subprocess.check_output
+
+    def response(command, **kwargs):
+        if command[0] == "gh":
+            assert command[:2] == ["gh", "api"]
+            assert command[2].startswith("repos/example/integration/commits/")
+            return json.dumps({"author": account})
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "check_output", response)
+    monkeypatch.chdir(tmp_path)
+    for key, value in {
+        "GITHUB_SHA": sha, "GITHUB_REPOSITORY": "example/integration",
+        "GITHUB_OUTPUT": str(output), "RELEASE_TAG": current_tag,
+        "INITIAL_RELEASE_BASELINE": baseline,
+    }.items():
+        monkeypatch.setenv(key, value)
+    exec(compile(release_steps["Generate commit release notes"]["run"], "<release-notes>", "exec"), {})
+    lines = output.read_text().splitlines()
+    delimiter = lines[0].split("<<")[1]
+    assert lines[-1] == delimiter
+    notes = "\n".join(lines[1:-1])
+    assert notes.startswith("## What's Changed\n")
+    assert ("refactor: use aiohttp \\[transport\\]" in notes) is change
+    assert ("Initial work" in notes) is (not previous and not stable)
+    assert ("feat: work shipped in beta" in notes) is stable
+    assert "Merge feature" not in notes
+    assert "chore: prepare release" not in notes
+    if change or not previous or stable:
+        assert ("by @contributor" if account else "by Test") in notes
+    assert ("No non-merge changes" in notes) is (previous and not change and not stable)
+    if previous or stable:
+        start = previous_tag if previous else baseline
+        assert f"/compare/{start}...{current_tag}" in notes
+    else:
+        assert f"/commits/{current_tag}" in notes
 
 
 def test_release_requires_version_change_or_manual_confirmation_and_validation():
@@ -150,7 +221,7 @@ def test_release_requires_version_change_or_manual_confirmation_and_validation()
     workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
     triggers = workflow.get("on", workflow.get(True))
     assert set(triggers) == {"push", "workflow_dispatch"}
-    assert triggers["push"]["branches"] == ["master"]
+    assert set(triggers["push"]["branches"]) == {"dev", "master"}
     assert triggers["push"]["paths"] == ["custom_components/proflame_connect_wifi/manifest.json"]
     confirmation = triggers["workflow_dispatch"]["inputs"]["confirm_publish"]
     assert confirmation["type"] == "boolean"
@@ -158,7 +229,10 @@ def test_release_requires_version_change_or_manual_confirmation_and_validation()
     assert confirmation["required"] is True
     jobs = workflow["jobs"]
     assert set(jobs["release"]["needs"]) == {"prepare", "tests", "validation"}
-    assert jobs["release"]["if"] == "github.ref == 'refs/heads/master' && needs.prepare.outputs.publish == 'true'"
+    assert jobs["release"]["if"] == (
+        "(github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master')"
+        " && needs.prepare.outputs.publish == 'true'"
+    )
     assert jobs["tests"]["uses"] == "./.github/workflows/lint.yml"
     assert jobs["validation"]["uses"] == "./.github/workflows/validate.yaml"
     for name in ("tests", "validation"):
@@ -166,21 +240,32 @@ def test_release_requires_version_change_or_manual_confirmation_and_validation()
         assert jobs[name]["if"] == "needs.prepare.outputs.publish == 'true'"
 
 
-@pytest.mark.parametrize("event,ref,confirm,changed,expected", [
-    ("push", "refs/heads/master", "", False, False),
-    ("push", "refs/heads/master", "", True, True),
-    ("push", "refs/heads/feature", "", True, False),
-    ("pull_request", "refs/heads/master", "", True, False),
-    ("workflow_dispatch", "refs/heads/master", "false", True, False),
-    ("workflow_dispatch", "refs/heads/master", "true", False, True),
-    ("workflow_dispatch", "refs/heads/feature", "true", True, False),
+@pytest.mark.parametrize("event,ref,confirm,changed,version,expected", [
+    ("push", "refs/heads/master", "", False, "1.0.0-beta.2", False),
+    ("push", "refs/heads/master", "", True, "1.0.0", True),
+    ("push", "refs/heads/dev", "", True, "1.0.0-beta.3", True),
+    ("push", "refs/heads/dev", "", False, "1.0.0-beta.2", False),
+    ("push", "refs/heads/master", "", True, "1.0.0-beta.3", None),
+    ("push", "refs/heads/dev", "", True, "1.0.0", False),
+    ("push", "refs/heads/dev", "", True, "01.0.0", None),
+    ("push", "refs/heads/dev", "", True, "invalid", None),
+    ("push", "refs/heads/feature", "", True, "1.0.0", False),
+    ("pull_request", "refs/heads/master", "", True, "1.0.0", False),
+    ("workflow_dispatch", "refs/heads/master", "false", True, "1.0.0", False),
+    ("workflow_dispatch", "refs/heads/master", "true", False, "1.0.0", True),
+    ("workflow_dispatch", "refs/heads/dev", "true", False, "1.0.0-beta.3", True),
+    ("workflow_dispatch", "refs/heads/dev", "true", False, "1.0.0", None),
+    ("workflow_dispatch", "refs/heads/master", "true", False, "1.0.0-beta.3", None),
+    ("workflow_dispatch", "refs/heads/feature", "true", True, "1.0.0", False),
 ])
-def test_publication_intent_gate(tmp_path, event, ref, confirm, changed, expected):
+def test_publication_intent_gate(tmp_path, event, ref, confirm, changed, version, expected):
     """Test real version detection: metadata-only edits and unmerged PRs never publish."""
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
     manifest = tmp_path / "custom_components" / DOMAIN / "manifest.json"
     manifest.parent.mkdir(parents=True)
-    manifest.write_text(json.dumps({"version": "1.1.0-beta.2", "name": "Old metadata"}))
+    manifest.write_text(json.dumps({
+        "version": "0.9.0" if changed else version, "name": "Old metadata",
+    }))
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
         ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
@@ -189,7 +274,7 @@ def test_publication_intent_gate(tmp_path, event, ref, confirm, changed, expecte
     )
     previous = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
     manifest.write_text(json.dumps({
-        "version": "1.1.0-beta.3" if changed else "1.1.0-beta.2", "name": "Updated metadata",
+        "version": version, "name": "Updated metadata",
     }))
     event_file = tmp_path / "event.json"
     event_file.write_text(json.dumps({"before": previous}))
@@ -198,16 +283,24 @@ def test_publication_intent_gate(tmp_path, event, ref, confirm, changed, expecte
     script = next(
         step["run"] for step in workflow["jobs"]["prepare"]["steps"] if step.get("id") == "gate"
     )
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=tmp_path, env={
             **os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_REF": ref,
             "CONFIRM_PUBLISH": confirm, "GITHUB_EVENT_PATH": str(event_file),
             "GITHUB_OUTPUT": str(output),
         },
-        check=True, capture_output=True, text=True,
+        check=False, capture_output=True, text=True,
     )
+    if expected is None:
+        assert result.returncode != 0
+        assert "dev requires a prerelease version; master requires a stable version" in result.stderr
+        assert not output.exists()
+        return
+    assert result.returncode == 0, result.stderr
     assert output.read_text() == f"publish={'true' if expected else 'false'}\n"
+    if event == "push" and ref == "refs/heads/dev" and changed and version == "1.0.0":
+        assert "::notice::Stable release preparation on dev" in result.stdout
 
 
 def test_validation_is_reusable_and_hacs_checks_exact_commit():
