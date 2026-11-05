@@ -140,8 +140,8 @@ Normal commits and contributor PR merges without a version change do not publish
 ### Stable releases from master
 
 When ready for a stable release, remove the prerelease suffix on `dev` in a
-separate preparation commit, for example `1.0.0`. That commit deliberately fails
-the dev publication gate: stable versions cannot publish from `dev`.
+separate preparation commit, for example `1.0.0`. That push skips publication
+with a notice: stable versions cannot publish from `dev`.
 Open a `dev` to `master` PR with the included changes and upgrade notes. Wait
 for the four required CI checks and review, then use a merge commit, not squash
 or rebase. The version change on `master` runs release validation and publishes

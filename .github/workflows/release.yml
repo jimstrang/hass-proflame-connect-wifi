@@ -65,7 +65,14 @@ jobs:
               if not isinstance(version, str):
                   raise ValueError("Manifest version must be a string")
               if ("-" in version) != (ref == "refs/heads/dev"):
-                  raise ValueError("dev requires a prerelease version; master requires a stable version")
+                  if (
+                      ref == "refs/heads/dev" and os.environ["GITHUB_EVENT_NAME"] == "push"
+                      and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)
+                  ):
+                      print("::notice::Stable release preparation on dev; publication waits for master.")
+                      publish = False
+                  else:
+                      raise ValueError("dev requires a prerelease version; master requires a stable version")
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
               output.write(f"publish={'true' if publish else 'false'}\n")
   tests:

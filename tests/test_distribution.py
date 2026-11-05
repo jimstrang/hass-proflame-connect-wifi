@@ -246,7 +246,9 @@ def test_release_requires_version_change_or_manual_confirmation_and_validation()
     ("push", "refs/heads/dev", "", True, "1.0.0-beta.3", True),
     ("push", "refs/heads/dev", "", False, "1.0.0-beta.2", False),
     ("push", "refs/heads/master", "", True, "1.0.0-beta.3", None),
-    ("push", "refs/heads/dev", "", True, "1.0.0", None),
+    ("push", "refs/heads/dev", "", True, "1.0.0", False),
+    ("push", "refs/heads/dev", "", True, "01.0.0", None),
+    ("push", "refs/heads/dev", "", True, "invalid", None),
     ("push", "refs/heads/feature", "", True, "1.0.0", False),
     ("pull_request", "refs/heads/master", "", True, "1.0.0", False),
     ("workflow_dispatch", "refs/heads/master", "false", True, "1.0.0", False),
@@ -297,6 +299,8 @@ def test_publication_intent_gate(tmp_path, event, ref, confirm, changed, version
         return
     assert result.returncode == 0, result.stderr
     assert output.read_text() == f"publish={'true' if expected else 'false'}\n"
+    if event == "push" and ref == "refs/heads/dev" and changed and version == "1.0.0":
+        assert "::notice::Stable release preparation on dev" in result.stdout
 
 
 def test_validation_is_reusable_and_hacs_checks_exact_commit():
