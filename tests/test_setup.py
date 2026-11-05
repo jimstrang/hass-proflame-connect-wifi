@@ -1,16 +1,72 @@
 """Test setup retry, unload failures, shutdown, and cancellation."""
 import asyncio
+from datetime import timedelta
 from importlib import import_module
+import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from websockets.asyncio.server import serve
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.entity_platform import EntityPlatform
 
 from custom_components import proflame_connect_wifi as integration
 from custom_components.proflame_connect_wifi.const import DOMAIN
 from custom_components.proflame_connect_wifi.coordinator import ProflameDataCoordinator
+from test_config_flow import make_entry
+
+
+async def test_real_client_setup_and_climate_registration(hass, snapshot):
+    """Load every platform and register climate with HA after a simulated device handshake."""
+    entities = []
+    received = []
+
+    async def device(ws):
+        received.append(await ws.recv())
+        await ws.send("PROFLAMECONNECTIONOPEN")
+        await ws.send(json.dumps(snapshot))
+        async for message in ws:
+            received.append(message)
+            assert message == "PROFLAMEPING"
+            await ws.send("PROFLAMEPONG")
+
+    async def forward(config_entry, platforms):
+        for name in platforms:
+            module = import_module(f"custom_components.proflame_connect_wifi.{name}")
+            await module.async_setup_entry(hass, config_entry, entities.extend)
+
+    async with serve(device, "127.0.0.1", 0) as server:
+        entry = make_entry(port=server.sockets[0].getsockname()[1])
+        hass.config_entries = MagicMock()
+        climate = None
+        with patch.object(
+            hass.config_entries, "async_forward_entry_setups",
+            new=AsyncMock(side_effect=forward),
+        ):
+            try:
+                assert await integration.async_setup_entry(hass, entry)
+                assert entry.runtime_data.client.read_only
+                assert len(entities) == 9
+                climate = next(entity for entity in entities if entity.entity_description.key == "climate")
+                platform = EntityPlatform(
+                    hass=hass, logger=logging.getLogger(__name__), domain="climate",
+                    platform_name=DOMAIN, platform=None, scan_interval=timedelta(seconds=30),
+                    entity_namespace=None,
+                )
+                climate.add_to_platform_start(hass, platform, None)
+                climate.entity_id = "climate.fireplace"
+                await climate.add_to_platform_finish()
+                assert hass.states.get(climate.entity_id).state == "off"
+                assert climate.unique_id == "climate_aabbccddeeff"
+                assert received[0] == "PROFLAMECONNECTION"
+            finally:
+                if climate is not None and climate.entity_id is not None:
+                    await climate.async_remove(force_remove=True)
+                if hasattr(entry, "runtime_data"):
+                    await entry.runtime_data.async_shutdown()
 
 
 @pytest.fixture
